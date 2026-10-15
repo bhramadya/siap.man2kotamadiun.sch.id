@@ -1,0 +1,487 @@
+<?php
+/**
+ * HALAMAN DEPAN PUBLIK (tanpa login)
+ * Ringkasan kehadiran hari ini (diagram lingkaran + persentase), histori absensi realtime,
+ * tombol Scan Absen (mengecek apakah perangkat sudah terdaftar) dan pendaftaran perangkat
+ * (kode pasangan atau scan QR pasangan). Dimuat oleh index.php bila belum login.
+ */
+$settings = get_settings();
+$namaSekolah = $settings['nama_sekolah'] ?? 'Sekolah';
+$logo = $settings['logo'] ?? '';
+$logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE_URL . '/uploads/siswa/' . rawurlencode($logo) : null;
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><?= e($namaSekolah) ?> — Absensi Siswa</title>
+<?= favicon_tag() ?>
+<link href="<?= BASE_URL ?>/assets/css/vendor/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+  :root { --biru: #0d6efd; --navy: #14213d; --abu: #8a94a6; --garis: #e9edf3; --hijau: #2fb344; --oranye: #f08c1a; --merah: #e03e4a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overscroll-behavior: none; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; color: var(--navy);
+         background: radial-gradient(900px 420px at 10% -10%, #dbe8ff, transparent 60%), radial-gradient(800px 400px at 100% 0, #e6e0ff, transparent 55%), #f4f6fb;
+         min-height: 100vh; -webkit-text-size-adjust: 100%; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 18px 16px 40px; }
+  .top { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .top .logo { width: 52px; height: 52px; background: transparent; display: grid; place-items: center; font-size: 34px; flex: none; color: var(--biru); }
+  .top .logo img { width: 100%; height: 100%; object-fit: contain; background: transparent; border-radius: 0; }
+  .top .nama { font-weight: 800; line-height: 1.15; text-transform: uppercase; letter-spacing: .01em; }
+  .top .sub { font-size: .78rem; font-weight: 700; letter-spacing: .12em; color: var(--biru); }
+  .top .admin { margin-left: auto; font-size: .85rem; font-weight: 600; text-decoration: none; color: var(--navy); border: 1px solid #dfe4ec; background: #fff; padding: 7px 12px; border-radius: 10px; white-space: nowrap; }
+  .top .admin:hover { border-color: var(--biru); color: var(--biru); }
+
+  .card { background: #fff; border: 1px solid var(--garis); border-radius: 18px; box-shadow: 0 1px 3px rgba(20,33,61,.05); }
+  .hero { padding: 22px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; }
+  .jam { font-size: 2.6rem; font-weight: 800; letter-spacing: .02em; font-variant-numeric: tabular-nums; line-height: 1; }
+  .tgl { color: var(--abu); font-weight: 600; margin-top: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; font-size: .8rem; font-weight: 700; background: #f1f3f8; color: #5b6580; }
+  .chip.ok { background: #e8f7ec; color: var(--hijau); } .chip.tutup { background: #fdecee; color: var(--merah); }
+  .chip.warn { background: #fff4e5; color: #c46a00; }
+  .aksi { display: flex; flex-direction: column; gap: 10px; min-width: 250px; flex: 1 1 250px; max-width: 340px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; font: inherit; font-weight: 700; cursor: pointer; padding: 15px 18px; transition: transform .12s, box-shadow .12s, background .12s; text-decoration: none; }
+  .btn:active { transform: scale(.98); }
+  .btn-scan { background: linear-gradient(135deg, #1f6feb, #5b3df5); color: #fff; font-size: 1.1rem; box-shadow: 0 12px 24px -12px rgba(31,111,235,.9); }
+  .btn-scan:hover { box-shadow: 0 16px 28px -12px rgba(31,111,235,1); }
+  .btn-ghost { background: #fff; color: var(--navy); border: 1.5px solid #dfe4ec; padding: 12px 18px; }
+  .btn-ghost:hover { border-color: var(--biru); color: var(--biru); }
+  .btn-primary { background: var(--biru); color: #fff; } .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-batal { background: #f1f3f8; color: var(--navy); }
+  .status-hp { font-size: .84rem; font-weight: 600; text-align: center; display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--abu); min-height: 20px; }
+  .status-hp.ok { color: var(--hijau); } .status-hp.no { color: #c46a00; } .status-hp.blok { color: var(--merah); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .jam { font-size: 2.2rem; } .aksi { max-width: none; } }
+  .panel { padding: 20px 22px; }
+  .panel h2 { font-size: 1rem; font-weight: 800; margin-bottom: 2px; }
+  .panel .ket { color: var(--abu); font-size: .84rem; margin-bottom: 14px; }
+  .donut-box { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .donut { position: relative; width: 210px; height: 210px; }
+  .donut svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .donut circle { fill: none; stroke-width: 26; transition: stroke-dasharray .8s ease, stroke-dashoffset .8s ease; }
+  .donut .tengah { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .donut .persen { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .donut .persen small { font-size: 1.2rem; font-weight: 700; }
+  .donut .lbl { color: var(--abu); font-weight: 700; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; margin-top: 4px; }
+  .legend { width: 100%; display: grid; gap: 8px; }
+  .lg { display: flex; align-items: center; gap: 10px; font-size: .92rem; }
+  .lg .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .lg .n { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .lg .p { width: 48px; text-align: right; color: var(--abu); font-variant-numeric: tabular-nums; }
+
+  .live { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px; background: #e8f7ec; color: var(--hijau); font-weight: 800; font-size: .72rem; letter-spacing: .08em; }
+  .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: kedip 1.4s infinite; }
+  .live.putus { background: #f1f3f8; color: var(--abu); } .live.putus::before { animation: none; }
+  @keyframes kedip { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  #feed { max-height: 460px; overflow-y: auto; margin: 0 -22px; scrollbar-width: none; }
+  #feed::-webkit-scrollbar { display: none; }
+  .fi { display: flex; align-items: center; gap: 13px; padding: 11px 22px; border-bottom: 1px solid #f1f3f8; }
+  .fi:last-child { border-bottom: 0; }
+  .fi .av { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .82rem; }
+  .fi .nm { font-weight: 700; line-height: 1.2; } .fi .kl { color: var(--abu); font-size: .82rem; }
+  .fi .wk { margin-left: auto; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .fi .wk small { display: block; font-size: .72rem; font-weight: 700; }
+  .fi .wk .h { color: var(--hijau); } .fi .wk .t { color: #d9631e; }
+  .fi.baru { animation: baru 3s ease-out; }
+  @keyframes baru { 0% { background: #e6f7ec; transform: translateY(-8px); opacity: 0; } 12% { opacity: 1; transform: none; } 100% { background: transparent; } }
+  .kosong { padding: 34px 22px; text-align: center; color: var(--abu); }
+  .foot { text-align: center; color: var(--abu); font-size: .78rem; letter-spacing: .08em; margin-top: 26px; }
+
+  /* modal */
+  .ov { position: fixed; inset: 0; z-index: 3000; background: rgba(15,23,42,.55); display: none; align-items: center; justify-content: center; padding: 16px; }
+  .ov.buka { display: flex; }
+  .kotak { background: #fff; border-radius: 20px; width: 100%; max-width: 440px; padding: 24px; box-shadow: 0 24px 60px rgba(0,0,0,.35); max-height: 94vh; overflow-y: auto; animation: muncul .18s ease-out; }
+  @keyframes muncul { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+  .kotak h3 { font-size: 1.25rem; font-weight: 800; }
+  .kotak .eyebrow { font-size: .72rem; font-weight: 800; letter-spacing: .12em; color: var(--abu); }
+  .tengah { text-align: center; }
+  .tengah .ik { font-size: 2.8rem; line-height: 1; margin-bottom: 8px; }
+  .kotak p.d { color: #5b6580; margin: 8px 0 18px; line-height: 1.55; }
+  .baris-tombol { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .baris-tombol .btn { padding: 12px 20px; }
+  .tab { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #f1f3f8; padding: 5px; border-radius: 14px; margin: 14px 0 18px; }
+  .tab button { border: 0; background: transparent; font: inherit; font-weight: 700; padding: 10px; border-radius: 10px; cursor: pointer; color: #5b6580; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .tab button.aktif { background: #fff; color: var(--biru); box-shadow: 0 1px 4px rgba(20,33,61,.12); }
+  label.f { display: block; font-size: .78rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #5b6580; margin: 12px 0 6px; }
+  input.in { width: 100%; border: 1.5px solid #dfe4ec; border-radius: 12px; padding: 13px 14px; font: inherit; background: #fff; outline: none; }
+  input.in:focus { border-color: var(--biru); box-shadow: 0 0 0 4px rgba(13,110,253,.12); }
+  input.kode { text-align: center; font-weight: 800; font-size: 1.6rem; letter-spacing: .45em; }
+  .err { color: var(--merah); font-size: .88rem; margin-top: 10px; display: none; }
+  .err.tampil { display: block; }
+  .info { background: #eaf3ff; color: #1b4f9c; border-radius: 12px; padding: 11px 13px; font-size: .86rem; line-height: 1.5; margin-top: 14px; text-align: left; }
+  #qrBox { width: 100%; min-height: 250px; border-radius: 14px; overflow: hidden; background: #0f172a; display: grid; place-items: center; color: #94a3b8; text-align: center; padding: 10px; }
+  #qrBox video { border-radius: 14px; }
+  .tutup-x { border: 0; background: #f1f3f8; width: 34px; height: 34px; border-radius: 10px; cursor: pointer; font-size: 1rem; color: #5b6580; flex: none; }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="logo"><?php if ($logoUrl): ?><img src="<?= e($logoUrl) ?>" alt=""><?php else: ?><i class="bi bi-qr-code-scan"></i><?php endif; ?></div>
+    <div>
+      <div class="nama"><?= e($namaSekolah) ?></div>
+      <div class="sub">ABSENSI SISWA</div>
+    </div>
+    <a href="<?= BASE_URL ?>/login.php" class="admin" title="Masuk"><i class="bi bi-box-arrow-in-right"></i> Masuk</a>
+  </div>
+
+  <div class="card hero">
+    <div>
+      <div class="jam" id="jam">--:--:--</div>
+      <div class="tgl" id="tgl">&nbsp;</div>
+      <div class="chips">
+        <span class="chip" id="chipBuka">memuat…</span>
+        <span class="chip" id="chipJam" style="display:none"></span>
+        <span class="chip" id="chipSaya" style="display:none"></span>
+      </div>
+    </div>
+    <div class="aksi">
+      <button type="button" class="btn btn-scan" id="btnScan"><i class="bi bi-qr-code-scan"></i> Scan Absen</button>
+      <div class="status-hp" id="statusHp"><i class="bi bi-hourglass-split"></i> Memeriksa perangkat…</div>
+      <button type="button" class="btn btn-ghost hide" id="btnDaftar"><i class="bi bi-phone"></i> Daftarkan Perangkat</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card panel">
+      <h2 id="jdlDonut">Kehadiran Hari Ini</h2>
+      <div class="ket" id="ketDonut">dari seluruh siswa aktif</div>
+      <div class="donut-box">
+        <div class="donut">
+          <svg viewBox="0 0 200 200" id="svgDonut">
+            <circle cx="100" cy="100" r="80" stroke="#e9edf3" stroke-dasharray="502.65 502.65"/>
+          </svg>
+          <div class="tengah"><div class="persen"><span id="persen">0</span><small>%</small></div><div class="lbl">Hadir</div></div>
+        </div>
+        <div class="legend">
+          <div class="lg"><span class="dot" style="background:var(--hijau)"></span>Tepat waktu<span class="n" id="nTepat">0</span><span class="p" id="pTepat">0%</span></div>
+          <div class="lg"><span class="dot" style="background:var(--oranye)"></span>Terlambat<span class="n" id="nTerlambat">0</span><span class="p" id="pTerlambat">0%</span></div>
+          <div class="lg"><span class="dot" style="background:var(--merah)"></span>Izin / Sakit / Alpa<span class="n" id="nTidak">0</span><span class="p" id="pTidak">0%</span></div>
+          <div class="lg"><span class="dot" style="background:#cbd3e1"></span>Belum presensi<span class="n" id="nBelum">0</span><span class="p" id="pBelum">0%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+        <h2 style="margin:0" id="jdlFeed">Absensi Terbaru</h2>
+        <span class="live" id="liveBadge" style="margin-left:auto">LIVE</span>
+      </div>
+      <div class="ket" id="waktuUpdate">memuat…</div>
+      <div id="feed"><div class="kosong">Memuat data…</div></div>
+    </div>
+  </div>
+
+  <div class="foot">SIAP ABSEN &copy; <?= date('Y') ?></div>
+</div>
+
+<!-- Dialog: Perangkat belum terdaftar -->
+<div class="ov" id="mdBelum" role="dialog" aria-modal="true">
+  <div class="kotak tengah">
+    <div class="ik"><i class="bi bi-phone"></i></div>
+    <h3 id="belumJudul">Perangkat Belum Terdaftar</h3>
+    <p class="d" id="belumIsi">Untuk absensi, perangkat ini harus terlebih dahulu dihubungkan dengan akun siswa.</p>
+    <div class="baris-tombol">
+      <button type="button" class="btn btn-primary" id="belumDaftar"><i class="bi bi-phone"></i> Daftarkan Perangkat</button>
+      <button type="button" class="btn btn-batal" id="belumBatal">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dialog: pendaftaran perangkat -->
+<div class="ov" id="mdDaftar" role="dialog" aria-modal="true" aria-labelledby="dfJudul">
+  <div class="kotak">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div><div class="eyebrow">PENDAFTARAN PERANGKAT</div><h3 id="dfJudul">Daftarkan Perangkat</h3></div>
+      <button type="button" class="tutup-x" id="dfTutup" aria-label="Tutup"><i class="bi bi-x-lg"></i></button>
+    </div>
+
+    <div id="dfForm">
+      <div class="tab" role="tablist">
+        <button type="button" id="tabKode" class="aktif"><i class="bi bi-123"></i> Pakai Kode</button>
+        <button type="button" id="tabQr"><i class="bi bi-qr-code"></i> Pakai QR</button>
+      </div>
+
+      <div id="paneKode">
+        <p class="d" style="margin:0 0 4px;color:#5b6580;font-size:.9rem">Minta admin membuat <strong>Kode Pasangan 6 angka</strong>. Berlaku 10 menit dan hanya bisa dipakai sekali.</p>
+        <label class="f" for="inNis">NIS / NISN</label>
+        <input class="in" id="inNis" inputmode="numeric" autocomplete="off" placeholder="Nomor induk siswa">
+        <label class="f" for="inKode">Kode Pasangan</label>
+        <input class="in kode" id="inKode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••">
+        <div class="err" id="errKode"></div>
+        <button type="button" class="btn btn-primary" id="btnKirim" style="width:100%;margin-top:16px" disabled><i class="bi bi-phone"></i> Daftarkan Perangkat Ini</button>
+      </div>
+
+      <div id="paneQr" class="hide">
+        <p class="d" style="margin:0 0 12px;color:#5b6580;font-size:.9rem">Arahkan kamera ke <strong>QR Pasangan</strong> yang ditampilkan admin.</p>
+        <div id="qrBox"><div><i class="bi bi-camera" style="font-size:2rem"></i><div style="margin-top:6px">Kamera belum aktif</div></div></div>
+        <div class="err" id="errQr"></div>
+        <button type="button" class="btn btn-primary" id="btnKamera" style="width:100%;margin-top:14px"><i class="bi bi-camera-video"></i> Aktifkan Kamera</button>
+        <div class="info">Bisa juga memindai QR Pasangan dengan <strong>kamera bawaan perangkat</strong>, lalu ketuk <em>Daftarkan Perangkat Ini</em>.</div>
+      </div>
+    </div>
+
+    <div id="dfOk" class="tengah hide">
+      <div class="ik" style="color:var(--hijau)"><i class="bi bi-check-circle-fill"></i></div>
+      <h3>Perangkat Berhasil Didaftarkan</h3>
+      <p style="font-weight:800;margin-top:8px" id="okNama"></p>
+      <p style="color:var(--abu);font-size:.9rem" id="okKelas"></p>
+      <div class="info">Sekarang tekan <strong>Scan Absen</strong> untuk presensi. Gunakan <strong>browser yang sama</strong> dengan yang Anda pakai sekarang.</div>
+      <button type="button" class="btn btn-primary" id="dfSelesai" style="width:100%;margin-top:16px">Selesai</button>
+    </div>
+  </div>
+</div>
+
+<script src="<?= BASE_URL ?>/assets/js/vendor/html5-qrcode.min.js"></script>
+<script src="<?= BASE_URL ?>/assets/js/device.js"></script>
+<script>
+(function () {
+  var BASE = <?= json_encode(BASE_URL) ?>;
+  var $ = function (id) { return document.getElementById(id); };
+  var HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  var BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  var WARNA = ['#20b2a0', '#4a9be8', '#a855c8', '#f59f0b', '#e5484d', '#2fb344', '#1d6fd8', '#8b5cf6'];
+  var C = 2 * Math.PI * 80;
+  var uuid = getOrCreateDeviceUuid();
+  var statusHp = null;      // hasil cek perangkat
+  var sudahAda = null;
+
+  /* ---------- jam ---------- */
+  function tick() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+    $('jam').textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    $('tgl').textContent = HARI[d.getDay()] + ', ' + d.getDate() + ' ' + BULAN[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* ---------- data kehadiran ---------- */
+  function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; }
+  function pct(n, t) { return t ? Math.round(n / t * 100) : 0; }
+
+  function gambarDonut(d) {
+    var svg = $('svgDonut');
+    svg.textContent = '';
+    var seg = [
+      { n: d.tepat, c: '#2fb344' }, { n: d.terlambat, c: '#f08c1a' },
+      { n: d.tidak_hadir, c: '#e03e4a' }, { n: d.belum, c: '#cbd3e1' }
+    ];
+    var total = d.total || 0, mulai = 0, ns = 'http://www.w3.org/2000/svg';
+    if (!total) seg = [{ n: 1, c: '#e9edf3' }], total = 1;
+    seg.forEach(function (s) {
+      if (s.n <= 0) return;
+      var len = s.n / total * C;
+      var c = document.createElementNS(ns, 'circle');
+      c.setAttribute('cx', 100); c.setAttribute('cy', 100); c.setAttribute('r', 80);
+      c.setAttribute('stroke', s.c);
+      c.style.strokeDasharray = len + ' ' + (C - len);
+      c.style.strokeDashoffset = -mulai;
+      svg.appendChild(c);
+      mulai += len;
+    });
+  }
+
+  function gambarFeed(d) {
+    var feed = $('feed'); feed.textContent = '';
+    if (!d.terbaru.length) {
+      var k = document.createElement('div'); k.className = 'kosong';
+      k.textContent = d.efektif ? 'Belum ada siswa yang presensi hari ini.' : 'Hari ini bukan hari efektif presensi.';
+      feed.appendChild(k);
+    }
+    var set = {};
+    d.terbaru.forEach(function (x) {
+      set[x.id] = true;
+      var it = document.createElement('div');
+      it.className = 'fi' + (sudahAda !== null && !sudahAda[x.id] ? ' baru' : '');
+      var kata = x.nama.split(' ');
+      var av = document.createElement('span'); av.className = 'av';
+      av.style.background = WARNA[hash(x.nama) % WARNA.length];
+      av.textContent = ((kata[0] || '')[0] || '') + ((kata[1] || '')[0] || '');
+      var info = document.createElement('div');
+      var n = document.createElement('div'); n.className = 'nm'; n.textContent = x.nama;
+      var kl = document.createElement('div'); kl.className = 'kl'; kl.textContent = 'Kelas ' + x.kelas;
+      info.appendChild(n); info.appendChild(kl);
+      var wk = document.createElement('div'); wk.className = 'wk'; wk.textContent = x.jam;
+      var sm = document.createElement('small'); sm.className = x.status === 'TERLAMBAT' ? 't' : 'h';
+      sm.textContent = x.status === 'TERLAMBAT' ? 'Terlambat' : 'Tepat waktu';
+      wk.appendChild(sm);
+      it.appendChild(av); it.appendChild(info); it.appendChild(wk);
+      feed.appendChild(it);
+    });
+    sudahAda = set;
+  }
+
+  function render(d) {
+    $('persen').textContent = d.persen;
+    var modeKelas = d.mode === 'kelas';
+    $('jdlDonut').textContent = modeKelas ? 'Kehadiran Kelas ' + d.kelas : 'Kehadiran Hari Ini';
+    $('jdlFeed').textContent = modeKelas ? 'Absensi Kelas ' + d.kelas : 'Absensi Terbaru';
+    $('ketDonut').textContent = modeKelas ? 'hari ini, dari ' + d.total + ' siswa kelas ' + d.kelas : 'dari ' + d.total + ' siswa aktif';
+    var cs = $('chipSaya');
+    if (modeKelas && d.saya) {
+      cs.style.display = '';
+      cs.className = 'chip ' + (d.saya.status ? (d.saya.status === 'TERLAMBAT' ? 'warn' : 'ok') : '');
+      cs.textContent = d.saya.nama + ' · ' + (d.saya.status ? 'sudah presensi ' + d.saya.jam + (d.saya.status === 'TERLAMBAT' ? ' (terlambat)' : '') : 'belum presensi hari ini');
+    } else { cs.style.display = 'none'; }
+    [['Tepat', d.tepat], ['Terlambat', d.terlambat], ['Tidak', d.tidak_hadir], ['Belum', d.belum]].forEach(function (r) {
+      $('n' + r[0]).textContent = r[1]; $('p' + r[0]).textContent = pct(r[1], d.total) + '%';
+    });
+    gambarDonut(d); gambarFeed(d);
+    var cb = $('chipBuka');
+    cb.className = 'chip ' + (d.efektif ? 'ok' : 'tutup');
+    cb.textContent = d.efektif ? 'Presensi dibuka hari ini' : 'Hari ini libur — presensi ditutup';
+    if (d.jam_masuk) { var cj = $('chipJam'); cj.style.display = ''; cj.textContent = 'Masuk ' + d.jam_masuk + (d.batas_terlambat ? ' · terlambat setelah ' + d.batas_terlambat : ''); }
+    $('waktuUpdate').textContent = 'Diperbarui ' + d.waktu;
+    $('liveBadge').classList.remove('putus'); $('liveBadge').textContent = 'LIVE';
+  }
+
+  var memuat = false;
+  function muat() {
+    if (memuat || document.hidden) return;
+    memuat = true;
+    fetch(BASE + '/api/beranda.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_uuid: uuid }), cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { if (d.success) render(d); })
+      .catch(function () { $('liveBadge').classList.add('putus'); $('liveBadge').textContent = 'TERPUTUS'; })
+      .then(function () { memuat = false; });
+  }
+  muat(); setInterval(muat, 8000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) muat(); });
+
+  /* ---------- status perangkat ---------- */
+  function cekPerangkat() {
+    var el = $('statusHp');
+    el.className = 'status-hp'; el.innerHTML = '<i class="bi bi-hourglass-split"></i> Memeriksa perangkat…';
+    return fetch(BASE + '/api/cek_perangkat.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_uuid: uuid })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      statusHp = d;
+      // Tombol Daftarkan Perangkat hanya tampil bila perangkat BELUM terdaftar
+      $('btnDaftar').classList.toggle('hide', !(d.success && d.status === 'BELUM'));
+      if (!d.success) { $('btnDaftar').classList.remove('hide'); el.className = 'status-hp no'; el.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Gagal memeriksa perangkat'; return; }
+      if (d.status === 'TIDAK_WAJIB') { el.className = 'status-hp ok'; el.innerHTML = '<i class="bi bi-check-circle-fill"></i> Pendaftaran perangkat tidak diwajibkan'; }
+      else if (d.status === 'AKTIF') { el.className = 'status-hp ok'; el.innerHTML = '<i class="bi bi-check-circle-fill"></i> Perangkat terdaftar'; }
+      else if (d.status === 'DIBLOKIR') { el.className = 'status-hp blok'; el.innerHTML = '<i class="bi bi-slash-circle-fill"></i> Perangkat ini diblokir admin'; }
+      else { el.className = 'status-hp no'; el.innerHTML = '<i class="bi bi-exclamation-circle-fill"></i> Perangkat belum terdaftar'; }
+    }).catch(function () { statusHp = null; $('btnDaftar').classList.remove('hide'); el.className = 'status-hp no'; el.innerHTML = '<i class="bi bi-wifi-off"></i> Tidak dapat memeriksa perangkat'; });
+  }
+  cekPerangkat();
+
+  /* ---------- dialog ---------- */
+  function buka(id) { $(id).classList.add('buka'); }
+  function tutup(id) { $(id).classList.remove('buka'); }
+  ['mdBelum', 'mdDaftar'].forEach(function (id) {
+    $(id).addEventListener('click', function (e) { if (e.target === $(id) && id === 'mdBelum') tutup(id); });
+  });
+
+  $('btnScan').addEventListener('click', function () {
+    var go = function () {
+      var d = statusHp;
+      if (d && d.success && d.status === 'DIBLOKIR') {
+        $('belumJudul').textContent = 'Perangkat Diblokir';
+        $('belumIsi').textContent = 'Perangkat ini diblokir oleh admin. Hubungi admin sekolah untuk membukanya.';
+        $('belumDaftar').classList.add('hide'); buka('mdBelum'); return;
+      }
+      if (d && d.success && !d.terdaftar) {
+        $('belumJudul').textContent = 'Perangkat Belum Terdaftar';
+        $('belumIsi').textContent = 'Untuk absensi, perangkat ini harus terlebih dahulu dihubungkan dengan akun siswa.';
+        $('belumDaftar').classList.remove('hide'); buka('mdBelum'); return;
+      }
+      window.location.href = BASE + '/presensi/index.php';   // sudah terdaftar (atau tidak diwajibkan)
+    };
+    if (statusHp === null) cekPerangkat().then(go); else go();
+  });
+  $('belumBatal').addEventListener('click', function () { tutup('mdBelum'); });
+  $('belumDaftar').addEventListener('click', function () { tutup('mdBelum'); bukaDaftar(); });
+  $('btnDaftar').addEventListener('click', bukaDaftar);
+
+  /* ---------- pendaftaran perangkat ---------- */
+  var scanner = null;
+  function bukaDaftar() {
+    $('dfForm').classList.remove('hide'); $('dfOk').classList.add('hide');
+    pilihTab('kode'); buka('mdDaftar');
+    setTimeout(function () { $('inNis').focus(); }, 150);
+  }
+  function hentikanKamera() {
+    if (scanner) { var s = scanner; scanner = null; s.stop().then(function () { s.clear(); }).catch(function () {}); }
+    $('qrBox').innerHTML = '<div><i class="bi bi-camera" style="font-size:2rem"></i><div style="margin-top:6px">Kamera belum aktif</div></div>';
+    $('btnKamera').classList.remove('hide');
+  }
+  function tutupDaftar() { hentikanKamera(); tutup('mdDaftar'); }
+  $('dfTutup').addEventListener('click', tutupDaftar);
+  $('dfSelesai').addEventListener('click', function () { tutupDaftar(); cekPerangkat().then(function () { sudahAda = null; muat(); }); });
+
+  function pilihTab(t) {
+    var kode = t === 'kode';
+    $('tabKode').classList.toggle('aktif', kode); $('tabQr').classList.toggle('aktif', !kode);
+    $('paneKode').classList.toggle('hide', !kode); $('paneQr').classList.toggle('hide', kode);
+    if (kode) hentikanKamera();
+  }
+  $('tabKode').addEventListener('click', function () { pilihTab('kode'); });
+  $('tabQr').addEventListener('click', function () { pilihTab('qr'); });
+
+  function berhasil(res) {
+    hentikanKamera();
+    $('okNama').textContent = (res.data && res.data.nama) || '';
+    $('okKelas').textContent = (res.data && res.data.kelas) ? 'Kelas ' + res.data.kelas : '';
+    $('dfForm').classList.add('hide'); $('dfOk').classList.remove('hide');
+  }
+  function kirim(body, errEl, tombol, labelAwal) {
+    body.device_uuid = uuid;
+    errEl.classList.remove('tampil');
+    return fetch(BASE + '/api/pasangan.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.success) { berhasil(res); return true; }
+        errEl.textContent = res.message || 'Gagal mendaftarkan perangkat.'; errEl.classList.add('tampil'); return false;
+      })
+      .catch(function () { errEl.textContent = 'Gagal terhubung ke server. Coba lagi.'; errEl.classList.add('tampil'); return false; });
+  }
+
+  // -- jalur kode --
+  var inNis = $('inNis'), inKode = $('inKode'), btnKirim = $('btnKirim');
+  function cekForm() { btnKirim.disabled = !(inNis.value.trim().length >= 4 && inKode.value.length === 6); $('errKode').classList.remove('tampil'); }
+  inNis.addEventListener('input', cekForm);
+  inKode.addEventListener('input', function () { this.value = this.value.replace(/\D/g, '').slice(0, 6); cekForm(); });
+  btnKirim.addEventListener('click', function () {
+    var label = btnKirim.innerHTML;
+    btnKirim.disabled = true; btnKirim.textContent = 'Memeriksa…';
+    kirim({ nis: inNis.value.trim(), kode: inKode.value }, $('errKode')).then(function (ok) {
+      if (!ok) { btnKirim.innerHTML = label; cekForm(); }
+    });
+  });
+
+  // -- jalur QR (kamera di halaman ini) --
+  function ambilToken(teks) {
+    var m = String(teks).match(/[?&]t=([0-9a-f]{32})/i) || String(teks).match(/\b([0-9a-f]{32})\b/i);
+    return m ? m[1].toLowerCase() : null;
+  }
+  $('btnKamera').addEventListener('click', function () {
+    var err = $('errQr'); err.classList.remove('tampil');
+    if (typeof Html5Qrcode === 'undefined') { err.textContent = 'Pemindai QR tidak tersedia. Gunakan kamera bawaan perangkat atau kode.'; err.classList.add('tampil'); return; }
+    $('qrBox').innerHTML = '';
+    $('btnKamera').classList.add('hide');
+    scanner = new Html5Qrcode('qrBox');
+    var selesai = false;
+    scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 220, height: 220 } }, function (teks) {
+      if (selesai) return;
+      var token = ambilToken(teks);
+      if (!token) { err.textContent = 'QR ini bukan QR Pasangan. Gunakan QR dari admin.'; err.classList.add('tampil'); return; }
+      selesai = true;
+      kirim({ token: token }, err).then(function (ok) { if (!ok) { selesai = false; hentikanKamera(); } });
+    }, function () {}).catch(function () {
+      scanner = null;
+      $('qrBox').innerHTML = '<div><i class="bi bi-camera-video-off" style="font-size:2rem"></i><div style="margin-top:6px">Kamera tidak dapat diakses</div></div>';
+      $('btnKamera').classList.remove('hide');
+      err.textContent = 'Izinkan akses kamera pada browser, atau pakai kode / kamera bawaan perangkat.'; err.classList.add('tampil');
+    });
+  });
+})();
+</script>
+</body>
+</html>

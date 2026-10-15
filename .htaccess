@@ -1,0 +1,31 @@
+# Mencegah listing direktori
+Options -Indexes
+
+# Lindungi file konfigurasi & folder internal dari akses langsung browser
+<FilesMatch "\.(sql|md)$">
+  Require all denied
+</FilesMatch>
+
+# =====================================================================
+# URL BERSIH TANPA .php (demi keamanan: menyembunyikan detail teknis
+# backend dari address bar browser)
+# =====================================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 1) Kalau ada yang mengakses URL yang MASIH mengandung .php secara
+  #    langsung (misal dari bookmark lama), arahkan (redirect 301) ke
+  #    versi bersihnya. Hanya berlaku utk GET, supaya submit form (POST)
+  #    tidak pernah kena redirect & kehilangan data yang dikirim.
+  RewriteCond %{REQUEST_METHOD} =GET
+  # index.php (router) dikecualikan: URL-nya memang index.php?modul=...
+  RewriteCond %{THE_REQUEST} !\s/+index\.php[\s?] [NC]
+  RewriteCond %{THE_REQUEST} \s/+(.+)\.php[\s?] [NC]
+  RewriteRule ^ /%1 [R=301,L]
+
+  # 2) Internal rewrite: request TANPA .php otomatis dilayani oleh file
+  #    .php yang sesuai (kalau ada), tanpa browser tahu/menampilkan .php.
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME}\.php -f
+  RewriteRule ^(.*)$ $1.php [L]
+</IfModule>
