@@ -1,0 +1,387 @@
+:root {
+  --tema: #0d6efd;
+}
+
+/* Sembunyikan scrollbar di semua tampilan (halaman tetap bisa di-scroll) */
+html, body, * {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* Edge/IE lama */
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
+  display: none;                /* Chrome, Safari, Edge, Android */
+  width: 0; height: 0;
+}
+
+/* Cegah halaman ikut "tertarik"/memantul saat scroll sudah mentok di atas atau bawah */
+html, body {
+  overscroll-behavior: none;
+}
+
+body {
+  background: #f4f6f9;
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+/* ---------- ADMIN LAYOUT ---------- */
+.sidebar {
+  width: 270px;
+  height: 100vh;
+  height: 100dvh;
+  background: #14213d;
+  color: #fff;
+  position: sticky;
+  top: 0;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-nav-scroll { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
+.sidebar-section-title {
+  padding: 16px 16px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.4);
+}
+.sidebar-footer {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255,255,255,.1);
+  padding: 8px 0;
+}
+.sidebar-brand {
+  padding: 18px 16px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.sidebar .nav-link {
+  color: rgba(255,255,255,.75);
+  padding: 10px 16px;
+  border-left: 3px solid transparent;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+/* PENTING: "width" tidak berlaku pada elemen inline seperti <i>.
+   Pakai inline-flex agar ukuran ikon konsisten dan sejajar dgn teks. */
+.sidebar .nav-link i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+.sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,.06); }
+.sidebar .nav-link.active {
+  color: #fff;
+  background: rgba(255,255,255,.1);
+  border-left-color: var(--tema);
+}
+.content { min-width: 0; }
+.topbar {
+  padding: 6px 16px;
+  position: sticky;      /* header tetap di atas saat halaman di-scroll */
+  top: 0;
+  z-index: 1020;         /* di atas konten, di bawah sidebar mobile (1050) & backdrop (1040) */
+  background: #fff !important;
+  box-shadow: 0 1px 6px rgba(20, 33, 61, .06);
+}
+
+/* ---------- TOPBAR: breadcrumb & avatar ---------- */
+.topbar-crumb { display: flex; align-items: center; gap: 8px; margin-left: 14px; font-size: .95rem; color: #8a94a6; min-width: 0; }
+.topbar-crumb a { color: #8a94a6; text-decoration: none; }
+.topbar-crumb a:hover { color: #0d6efd; }
+.topbar-crumb .sep { font-size: .65rem; opacity: .7; }
+.topbar-crumb .now { color: #14213d; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-user { display: inline-flex; align-items: center; gap: 10px; color: #14213d; }
+.topbar-user-info { line-height: 1.15; }
+.topbar-user-info .nama { display: block; font-size: .875rem; font-weight: 600; }
+.topbar-user-info .peran { display: block; font-size: .72rem; color: #8a94a6; text-transform: capitalize; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: #0d6efd; color: #fff; font-weight: 700; font-size: .95rem; }
+
+/* ---------- JUDUL HALAMAN: teks kecil di atas + judul tanpa ikon ---------- */
+.page-eyebrow { font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8a94a6; margin-bottom: 2px; }
+.content-scroll h4 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.015em; color: #14213d; line-height: 1.25; }
+.content-scroll h4 > i.bi:first-child { display: none; }
+@media (max-width: 575px) { .content-scroll h4 { font-size: 1.3rem; } .page-eyebrow { font-size: .7rem; } }
+
+/* ---------- TOMBOL AKSI HALAMAN (Import, Export, Tambah, Kembali, dst) ---------- */
+.content-scroll > .d-flex .btn,
+.content-scroll > div > .d-flex .btn {
+  border-radius: 8px; font-weight: 600; font-size: .9rem; padding: .45rem .95rem;
+}
+.content-scroll > .d-flex .btn-outline-secondary, .content-scroll > .d-flex .btn-outline-primary, .content-scroll > .d-flex .btn-outline-success,
+.content-scroll > div > .d-flex .btn-outline-secondary, .content-scroll > div > .d-flex .btn-outline-primary, .content-scroll > div > .d-flex .btn-outline-success {
+  background: #fff; color: #1b2437; border: 1px solid #e3e7ee; box-shadow: 0 1px 2px rgba(20, 33, 61, .04);
+}
+.content-scroll > .d-flex .btn-outline-secondary:hover, .content-scroll > .d-flex .btn-outline-primary:hover, .content-scroll > .d-flex .btn-outline-success:hover,
+.content-scroll > div > .d-flex .btn-outline-secondary:hover, .content-scroll > div > .d-flex .btn-outline-primary:hover, .content-scroll > div > .d-flex .btn-outline-success:hover {
+  background: #f4f6fa; color: #14213d; border-color: #d5dbe6;
+}
+.content-scroll > .d-flex .btn-primary, .content-scroll > div > .d-flex .btn-primary {
+  background: #0d6efd; border-color: #0d6efd; box-shadow: 0 4px 10px -4px rgba(13, 110, 253, .55);
+}
+
+/* ---------- Pilihan jumlah data per halaman ---------- */
+.per-page { display: inline-flex; align-items: center; gap: 10px; color: #8a94a6; font-size: .9rem; margin: 0; white-space: nowrap; flex: none; }
+.per-page span { white-space: nowrap; }
+.per-page select { width: auto; min-width: 72px; background-color: #fff; border-color: #dfe4ec; border-radius: 8px; color: #14213d; font-weight: 600; padding-top: .35rem; padding-bottom: .35rem; }
+
+/* ---------- SELECT KUSTOM: daftar pilihan melengkung & elegan ---------- */
+.cs { position: relative; display: block; width: 100%; }
+.cs-native { position: absolute !important; opacity: 0; width: 1px; height: 1px; pointer-events: none; left: 0; bottom: 0; }
+.cs-btn { text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-btn:disabled { opacity: .65; cursor: not-allowed; }
+.cs-sm .cs-btn { font-size: .875rem; padding-top: .25rem; padding-bottom: .25rem; }
+.cs-menu {
+  position: fixed; z-index: 2000; display: none; overflow-y: auto; overscroll-behavior: contain;
+  background: #fff; border: 1px solid #e6eaf2; border-radius: 14px; padding: 6px;
+  box-shadow: 0 12px 32px -8px rgba(20, 33, 61, .22), 0 2px 6px rgba(20, 33, 61, .06);
+}
+.cs-menu.open { display: block; animation: cs-masuk .14s ease-out; }
+.cs-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 9px;
+           font-size: .93rem; font-weight: 500; color: #2b3550; cursor: pointer; }
+.cs-item:hover, .cs-item.aktif { background: #f1f5ff; color: #0d6efd; }
+.cs-item.dipilih { background: #e8f0ff; color: #0d6efd; font-weight: 600; }
+.cs-item.mati { opacity: .45; cursor: not-allowed; }
+.cs-item .bi { font-size: .95rem; }
+.cs-grup { padding: 8px 12px 4px; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a94a6; }
+@keyframes cs-masuk { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+/* tata letak di bar filter tabel & pilihan per halaman */
+.tbl-tools .cs { width: auto; flex: 0 1 170px; }
+.per-page .cs { width: auto; min-width: 76px; }
+
+
+/* ---------- TABEL DATA (kartu tabel seragam) ---------- */
+.tbl-card { background: #fff; border: 1px solid #e9edf3; border-radius: 14px; box-shadow: 0 1px 3px rgba(20,33,61,.04); overflow: hidden; }
+.tbl-head { padding: 18px 22px; border-bottom: 1px solid #eef1f6; }
+.tbl-head h6 { margin: 0; font-weight: 700; color: #14213d; font-size: 1rem; }
+.tbl-head .sub { color: #8a94a6; font-size: .86rem; }
+.tbl-tools { padding: 14px 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.tbl-tools form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 auto; justify-content: flex-end; }
+.tbl-tools .per-page { margin-right: auto; }
+.tbl-search { position: relative; flex: 1 1 240px; max-width: 300px; }
+.tbl-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #8a94a6; }
+.tbl-search input { padding-left: 36px; background: #f7f8fb; border-color: #e3e7ee; border-radius: 8px; }
+.tbl-tools select { max-width: 170px; background-color: #f7f8fb; border-color: #e3e7ee; border-radius: 8px; }
+.tbl-tools .btn { border-radius: 8px; font-weight: 600; }
+.tbl { margin: 0; }
+.tbl thead th { background: #fafbfc; color: #8a94a6; font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+                padding: 12px 22px; border-top: 1px solid #eef1f6; border-bottom: 1px solid #eef1f6; white-space: nowrap; }
+.tbl tbody td { padding: 13px 22px; border-color: #eef1f6; vertical-align: middle; color: #5b6580; white-space: nowrap; }
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl tbody tr:hover td { background: #fafbfd; }
+.tbl .nama { color: #14213d; font-weight: 500; }
+.avatar-sm { width: 34px; height: 34px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center;
+             color: #fff; font-size: .72rem; font-weight: 700; object-fit: cover; }
+.pill { display: inline-block; padding: 2px 10px; border: 1px solid #e3e7ee; border-radius: 999px; background: #f7f8fb; font-size: .8rem; color: #3b4560; }
+.st { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: .86rem; }
+.st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.st-aktif { color: #2fb344; } .st-lain { color: #8a94a6; }
+.btn-dots { border: 0; background: transparent; color: #8a94a6; width: 32px; height: 32px; border-radius: 8px; }
+.btn-dots:hover, .btn-dots.show { background: #f1f3f8; color: #14213d; }
+.tbl-foot { padding: 14px 22px; border-top: 1px solid #eef1f6; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 575px) { .tbl-head, .tbl-tools, .tbl-foot { padding-left: 16px; padding-right: 16px; } .tbl thead th, .tbl tbody td { padding-left: 16px; padding-right: 16px; } .tbl-search { max-width: none; flex-basis: 100%; } .tbl-tools select { max-width: none; flex: 1 1 140px; } }
+/* bar alat (pencarian & filter) di dalam kartu tabel, seragam di semua halaman */
+.tbl-tools .form-control, .tbl-tools .form-select, .tbl-tools .cs-btn {
+  background-color: #f7f8fb; border-color: #e3e7ee; border-radius: 8px;
+}
+.tbl-tools input[type="date"], .tbl-tools input[type="number"] { flex: 0 1 150px; max-width: 160px; }
+.tbl-tools input[type="number"] { max-width: 110px; flex-basis: 100px; }
+.tbl-tools .tbl-search { flex: 1 1 220px; max-width: 280px; }
+.tbl-tools .btn { border-radius: 8px; font-weight: 600; white-space: nowrap; }
+.tbl-subhead { padding: 14px 22px 10px; font-weight: 700; color: #14213d; font-size: .95rem; border-top: 1px solid #eef1f6; }
+.tbl-subhead .sub { display: block; color: #8a94a6; font-size: .82rem; font-weight: 500; margin-top: 2px; }
+@media (max-width: 575px) { .tbl-subhead { padding-left: 16px; padding-right: 16px; } .tbl-tools input[type="date"], .tbl-tools input[type="number"] { flex: 1 1 130px; max-width: none; } }
+.tbl.tbl-wrap tbody td { white-space: normal; }
+.tbl.tbl-fit thead th, .tbl.tbl-fit tbody td { padding-left: 14px; padding-right: 14px; }
+.tbl.tbl-fit thead th { white-space: normal; }
+.filter-card { margin-bottom: 1rem; }
+.filter-body { padding: 16px 22px; }
+.filter-card .form-control, .filter-card .form-select, .filter-card .cs-btn {
+  background-color: #f7f8fb; border-color: #e3e7ee; border-radius: 8px;
+}
+.filter-card .btn { border-radius: 8px; font-weight: 600; }
+.tbl-card + .tbl-card { margin-top: 1rem; }
+.tbl-card .table-responsive { margin: 0; }
+.tbl-card .badge { border-radius: 8px; font-weight: 600; }
+@media (max-width: 575px) { .filter-body { padding: 14px 16px; } }
+
+/* ---------- Bar pencarian & filter di HP: tersusun rapi dalam grid 2 kolom ---------- */
+@media (max-width: 575px) {
+  .tbl-tools form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; justify-content: stretch; width: 100%; }
+  .tbl-tools form > .per-page { grid-column: 1; grid-row: 1; margin: 0; }
+  .tbl-tools form > .btn { grid-column: 2; grid-row: 1; justify-self: end; }
+  .tbl-tools form > .tbl-search { grid-column: 1 / -1; grid-row: 2; max-width: none; width: 100%; flex: none; }
+  .tbl-tools form > .cs { width: 100%; max-width: none; min-width: 0; flex: none; }
+  .tbl-tools form > input[type="date"], .tbl-tools form > input[type="number"] { width: 100%; max-width: none; flex: none; }
+  .tbl-tools .per-page { font-size: .85rem; gap: 8px; }
+  .tbl-tools .per-page .cs { min-width: 70px; }
+}
+
+/* ---------- Menu akun (klik avatar di header) ---------- */
+.topbar-user { background: transparent; border: 0; padding: 4px 6px; border-radius: 12px; cursor: pointer; transition: background .15s; }
+.topbar-user:hover, .topbar-user.show { background: #f1f4f9; }
+.menu-user { min-width: 230px; padding: 8px; border: 1px solid #e6eaf2; border-radius: 14px; box-shadow: 0 14px 34px -10px rgba(20, 33, 61, .25), 0 2px 6px rgba(20, 33, 61, .06); }
+.menu-user-head { display: flex; align-items: center; gap: 12px; padding: 8px 10px 10px; }
+.menu-user-head .avatar { width: 42px; height: 42px; font-size: 1.05rem; }
+.menu-user-head .info { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.menu-user-head .nama { font-weight: 700; color: #14213d; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-user-head .peran { color: #8a94a6; font-size: .8rem; text-transform: capitalize; }
+.menu-user .dropdown-divider { margin: 4px 0; border-top-color: #eef1f6; opacity: 1; }
+.menu-user .dropdown-item { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 9px; font-size: .93rem; font-weight: 500; color: #2b3550; }
+.menu-user .dropdown-item i { width: 18px; font-size: 1.05rem; color: #6b7690; text-align: center; margin: 0; }
+.menu-user .dropdown-item:hover, .menu-user .dropdown-item:focus { background: #f1f5ff; color: #0d6efd; }
+.menu-user .dropdown-item:hover i { color: #0d6efd; }
+.menu-user .item-keluar, .menu-user .item-keluar i { color: #e03e4a; }
+.menu-user .item-keluar:hover { background: #fdecee; color: #c92f3b; }
+.menu-user .item-keluar:hover i { color: #c92f3b; }
+
+/* ---------- Tabel berubah jadi kartu bertumpuk di HP (.tbl-stack + data-label pada <td>) ---------- */
+@media (max-width: 767px) {
+  .tbl-stack thead { display: none; }
+  .tbl-stack, .tbl-stack tbody { display: block; width: 100%; }
+  .tbl-stack tbody tr { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-bottom: 1px solid #eef1f6; }
+  .tbl-stack tbody tr:last-child { border-bottom: 0; }
+  .tbl-stack tbody tr:hover td { background: transparent; }
+  .tbl-stack tbody td { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 0 !important; border: 0 !important; white-space: normal; text-align: right; word-break: break-word; }
+  .tbl-stack tbody td::before { content: attr(data-label); flex: none; min-width: 86px; text-align: left; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #8a94a6; }
+  .tbl-stack tbody td br { display: none; }
+  .tbl-stack tbody td small { margin-left: 6px; }
+  /* Event tampil paling atas sebagai judul kartu, tanpa label */
+  .tbl-stack tbody td[data-label="Event"] { order: -2; justify-content: flex-start; text-align: left; margin-bottom: 2px; }
+  .tbl-stack tbody td[data-label="Event"]::before { display: none; }
+  .tbl-stack tbody td[data-label="Waktu"] { order: -1; }
+  .tbl-stack tbody td[data-label="Keterangan"] { order: 5; padding-top: 6px !important; border-top: 1px dashed #e3e7ee !important; }
+  .tbl-stack tbody td[data-label="Keterangan"]::before { align-self: flex-start; }
+  .tbl-stack tbody tr.kosong { display: block; }
+  .tbl-stack tbody tr.kosong td { display: block; text-align: center; }
+  .tbl-stack tbody tr.kosong td::before { display: none; }
+}
+
+/* ---------- SIDEBAR MINIMIZE (tombol garis tiga di header) ---------- */
+.sidebar-brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .2s ease; }
+@media (min-width: 993px) {
+  .sidebar { overflow: hidden; transition: width .28s cubic-bezier(.4, 0, .2, 1); }
+  .sidebar-brand { padding-left: 26px; }
+  .sidebar-brand i { width: 24px; display: inline-flex; justify-content: center; font-size: 1.2rem; flex: none; }
+  .sidebar .nav-link { padding-left: 25px; }          /* ikon tetap di tempat saat melebar/menyempit */
+  .sidebar-section-title { white-space: nowrap; transition: opacity .2s ease; }
+
+  html.sidebar-collapsed .sidebar { width: 76px; }
+  html.sidebar-collapsed .sidebar-brand span { opacity: 0; }
+  /* Saat diminimize: hanya ikon yang terlihat, teks menu disembunyikan sepenuhnya */
+  html.sidebar-collapsed .sidebar-brand span { display: none; }
+  html.sidebar-collapsed .sidebar .nav-link { font-size: 0; }
+  html.sidebar-collapsed .sidebar .nav-link i { font-size: 19px; margin-right: 0; }
+  html.sidebar-collapsed .sidebar .nav-link.active { border-left-color: var(--tema); }
+  html.sidebar-collapsed .sidebar-section-title { opacity: 0; height: 0; padding: 0; margin: 0; overflow: hidden; }
+  html.sidebar-collapsed .sidebar-nav-scroll .nav { padding-top: 6px; }
+}
+
+@media (max-width: 992px) {
+  .sidebar { position: fixed; left: -270px; z-index: 1050; transition: left .2s; }
+  .sidebar.show { left: 0; }
+}
+
+/* Backdrop di belakang sidebar saat tampilan mobile: tap di sini menutup
+   sidebar. Tanpa ini, area konten halaman ada DI BAWAH sidebar (z-index
+   lebih rendah) sehingga tap di situ tidak pernah "terlihat" oleh sidebar
+   -- makanya sidebar terasa tidak bisa ditutup selain menekan tombolnya lagi. */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .35);
+  z-index: 1040; /* di bawah .sidebar (1050), di atas konten halaman */
+}
+@media (max-width: 992px) {
+  .sidebar-backdrop.show { display: block; }
+}
+
+/* Kartu statistik dashboard: angka besar -> label kapital kecil, dengan
+   ikon besar transparan sbg watermark di pojok kanan-bawah. Tinggi semua
+   kartu DIKUNCI seragam (min-height) supaya baris kartu tetap rata rapi
+   walau panjang labelnya beda-beda (mis. "Terlambat" vs "Belum Presensi"). */
+.stat-card {
+  border-radius: 16px;
+  border: none;
+  color: #fff;
+  height: 100%;
+  overflow: hidden; /* potong ikon watermark yg sedikit keluar sudut */
+}
+.stat-card .card-body {
+  position: relative;
+  padding: 18px 16px;
+  min-height: 108px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.stat-icon-watermark {
+  position: absolute;
+  right: -6px;
+  bottom: -10px;
+  font-size: 4.2rem;
+  opacity: .22;
+  line-height: 1;
+}
+.stat-card .stat-value { font-size: 1.8rem; font-weight: 800; line-height: 1.1; position: relative; z-index: 1; }
+.stat-card .stat-label {
+  font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  opacity: .92; margin-top: 4px; position: relative; z-index: 1;
+}
+
+@media (max-width: 576px) {
+  .stat-card .card-body { min-height: 98px; padding: 16px 14px; }
+  .stat-icon-watermark { font-size: 3.4rem; }
+  .stat-card .stat-value { font-size: 1.55rem; }
+  .stat-card .stat-label { font-size: .68rem; }
+}
+
+/* ---------- LOGIN PAGE ---------- */
+.login-page {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #0d6efd, #14213d);
+}
+.login-box {
+  background: #fff; padding: 32px; border-radius: 16px;
+  width: 100%; max-width: 380px; box-shadow: 0 10px 30px rgba(0,0,0,.2);
+}
+
+/* ---------- PRESENSI (MOBILE) PAGE ---------- */
+.presensi-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #eef2ff, #f8fafc);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 24px 12px;
+}
+.presensi-wrap { width: 100%; max-width: 420px; }
+.presensi-wrap .card { border-radius: 16px; border: none; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+#reader, #reader2 { border-radius: 12px; overflow: hidden; }
+
+/* ---------- KARTU QR CETAK (panel/qr_print.php) ---------- */
+.kartu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.kartu {
+  background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 12px;
+  text-align: center; page-break-inside: avoid;
+}
+.kartu h6 { margin: 6px 0 0; font-size: 14px; }
+.kartu small { color: #666; }
+.qr-item img { max-width: 100%; height: auto; }
+
+/* ---------- MODE CETAK (BERLAKU DI SEMUA HALAMAN ADMIN) ----------
+   Saat mencetak (Ctrl+P / tombol Cetak), sidebar, topbar, dan elemen
+   ber-class .no-print otomatis disembunyikan sehingga hasil cetak
+   hanya menampilkan konten utama (mis. kartu QR) tanpa navigasi admin. */
+@media print {
+  .sidebar, .topbar, .no-print { display: none !important; }
+  body { background: #fff !important; }
+  .content { width: 100% !important; }
+  .container-fluid { padding: 0 !important; }
+}
