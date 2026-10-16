@@ -51,9 +51,13 @@ try {
          FROM presensi p JOIN siswa s ON s.id = p.siswa_id
          WHERE p.tanggal = CURDATE() AND p.status IN ('HADIR','TERLAMBAT')"
          . ($kelas !== '' ? ' AND p.kelas_saat_presensi = :k' : '') .
+<<<<<<< HEAD
         // Perangkat terdaftar (mode kelas): tampilkan SEMUA siswa kelas itu yang sudah presensi hari ini.
         // Tampilan publik (perangkat belum dikenali): tetap dibatasi 15 terbaru.
         " ORDER BY p.jam_masuk DESC, p.id DESC LIMIT " . ($kelas !== '' ? 500 : 15)
+=======
+        " ORDER BY p.jam_masuk DESC, p.id DESC LIMIT 15"
+>>>>>>> 6bcabbc39289f07eb4e728fb4aa648439ed80733
     );
     $st->execute($parK);
     $terbaru = array_map(fn($x) => [

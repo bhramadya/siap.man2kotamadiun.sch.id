@@ -6,6 +6,7 @@
  * Modul ini TIDAK menerima input mentah "device_id" dari klien sebagai
  * bukti tunggal. Klien (JS) mengirim sebuah UUID instalasi yang
  * tersimpan persisten di localStorage (dibuat sekali oleh browser).
+<<<<<<< HEAD
  * Server meng-hash UUID tersebut (SHA-256) untuk dibandingkan.
  *
  * PENTING: User-Agent SENGAJA TIDAK ikut di-hash. UA berubah otomatis setiap
@@ -13,11 +14,18 @@
  * sehingga hash lama tidak cocok lagi dan perangkat yang sah dianggap
  * "belum terdaftar". UUID acak 122-bit sudah cukup sebagai identitas;
  * UA mudah dipalsukan sehingga tidak menambah keamanan nyata.
+=======
+ * Server menggabungkan UUID tersebut dengan atribut browser lain
+ * (User-Agent) lalu meng-hash-nya (SHA-256) sebelum disimpan/dibandingkan.
+ *
+ * Device mentah TIDAK PERNAH disimpan di database — hanya hash-nya.
+>>>>>>> 6bcabbc39289f07eb4e728fb4aa648439ed80733
  * =====================================================================
  */
 
 require_once __DIR__ . '/functions.php';
 
+<<<<<<< HEAD
 /** Versi skema hash. Naikkan bila rumus hash berubah lagi. */
 const DEVICE_HASH_VERSI = 'v2';
 
@@ -56,6 +64,18 @@ function sinkronkan_hash_perangkat(string $installUuid, string $hashBaru): void
         // Bentrok UNIQUE (sangat jarang) -> abaikan; jangan sampai memblokir presensi.
         error_log('sinkronkan_hash_perangkat: ' . $e->getMessage());
     }
+=======
+/**
+ * Membentuk device_hash dari UUID instalasi (kiriman klien) + User-Agent.
+ * UUID sendiri sudah acak & unik per-install, User-Agent hanya menambah
+ * sedikit entropi/konteks. Kombinasi ini di-hash agar nilai mentah tidak
+ * pernah tersimpan.
+ */
+function build_device_hash(string $installUuid): string
+{
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    return hash('sha256', $installUuid . '|' . $ua);
+>>>>>>> 6bcabbc39289f07eb4e728fb4aa648439ed80733
 }
 
 /**

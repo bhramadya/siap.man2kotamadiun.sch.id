@@ -200,4 +200,8 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
 - Semua validasi krusial (token QR, device binding, jam, presensi ganda, geofence) dilakukan
   **di server**. Jam & tanggal presensi selalu dari waktu server.
 - Hapus siswa hanya lewat POST + token CSRF.
+<<<<<<< HEAD
 - Ganti password `admin` bawaan dan password database sebelum dipakai produksi.
+=======
+- Ganti password `admin` bawaan dan password database sebelum dipakai produksi.
+>>>>>>> 6bcabbc39289f07eb4e728fb4aa648439ed80733
