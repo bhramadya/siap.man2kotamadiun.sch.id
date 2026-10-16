@@ -34,7 +34,7 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 - Presensi, konfirmasi, dan pendaftaran perangkat (`/presensi/`).
 
 **Panel admin / operator**
-- Dashboard, Papan Kehadiran Langsung (`papan`), Data Siswa (tambah, ubah, hapus, import Excel/CSV).
+- Dashboard, Papan Kehadiran Langsung (`papan`), Data Siswa (detail, tambah, ubah, hapus, import Excel/CSV).
 - Master Kelas dan Kenaikan Kelas.
 - QR Siswa, QR Kelas, QR Gerbang (lihat, cetak, regenerate).
 - Presensi harian (ekspor & cetak), Rekap bulanan (cetak).
@@ -48,7 +48,7 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 ## 3. STRUKTUR FOLDER
 
 ```
-├── index.php            → router (index.php?modul=...) + beranda publik
+├── index.php            → router URL bersih (/siswa, /absensi, ...) + beranda publik
 ├── beranda.php, login.php, logout.php
 ├── config/database.php
 ├── panel/               → halaman panel admin & operator
@@ -109,17 +109,43 @@ dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan
 
 ---
 
-## 6. URL PENTING
+## 6. URL BERSIH (ROUTING)
 
-| Fungsi | URL |
+Seluruh halaman panel memakai URL bersih tanpa `.php` dan tanpa `?modul=`.
+Semua dilayani `index.php` (front controller) lewat aturan di `.htaccess`.
+
+| Halaman | URL |
 |---|---|
-| Beranda publik | `/` |
-| Presensi Siswa | `/presensi/` |
-| Login Admin | `/login.php` |
-| Panel (router) | `/index.php?modul=dashboard` |
-| QR Gerbang | modul `qr_gerbang` |
-| Manajemen Perangkat | modul `device` |
-| Log Keamanan | modul `security_log` |
+| Dashboard | `/dashboard` |
+| Daftar siswa | `/siswa` — filter: `/siswa?q=sajida&kelas=X%20B`, `/siswa?kelas=X%20B&limit=20` |
+| Detail siswa | `/siswa/2026001` |
+| Tambah siswa | `/siswa/tambah` |
+| Edit siswa | `/siswa/2026001/edit` |
+| QR Code siswa | `/siswa/2026001/qr` |
+| Import / hapus siswa | `/siswa/import`, `/siswa/hapus` (POST) |
+| Data kelas | `/kelas` · kenaikan kelas: `/kelas/kenaikan` |
+| Riwayat absensi | `/absensi` · ekspor `/absensi/ekspor?type=csv` · cetak `/absensi/cetak` |
+| Rekap | `/rekap` · cetak `/rekap/cetak` |
+| Papan langsung | `/papan` |
+| Perangkat | `/perangkat` · kode pasangan `/perangkat/kode?siswa_id=…` · massal `/perangkat/kode-massal` |
+| QR | `/qr/siswa` · `/qr/siswa/cetak` · `/qr/kelas` · `/qr/kelas/cetak` · `/qr/gerbang` |
+| Log | `/log/keamanan` · `/log/aktivitas` · `/log/cetak` |
+| Pengaturan | `/pengaturan` |
+| Pengguna & hak akses | `/pengguna` · `/pengguna/hak-akses` · profil `/profil` |
+| Beranda publik, login | `/` · `/login` |
+| Presensi siswa (publik) | `/presensi/` (tidak berubah, QR kartu siswa tetap berlaku) |
+
+**Aturan penting**
+- `{nis}` pada URL adalah **NIS siswa**, bukan id database. Jika NIS diubah, URL siswa itu ikut berubah.
+- Jumlah baris per halaman memakai parameter **`limit`** (pilihan 10/20/50/100). Nama lama `per_page` masih diterima.
+- URL lama (`index.php?modul=siswa&...`, `/panel/siswa.php`) otomatis dialihkan (301) ke URL bersih, jadi bookmark lama tidak rusak.
+- Peta rute ada di satu tempat: konstanta `RUTE_MODUL` di `includes/functions.php`. Untuk membuat tautan **selalu**
+  pakai `modul_url('nama_modul', ['param' => 'nilai'])`; jangan menempelkan `&param=...` secara manual.
+- Jangan membuat rute berawalan nama folder nyata (`api`, `assets`, `config`, `includes`, `panel`, `presensi`, `uploads`, `database`).
+- Server **Apache/LiteSpeed** (aaPanel default) cukup memakai `.htaccess` bawaan. Untuk **Nginx**, tambahkan:
+  ```nginx
+  location / { try_files $uri $uri/ $uri.php /index.php?$query_string; }
+  ```
 
 ---
 

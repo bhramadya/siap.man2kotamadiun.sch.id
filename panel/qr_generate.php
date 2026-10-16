@@ -8,7 +8,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && isset($_POST['regenerate'])) {
   csrf_require();
   if (!can('qr_siswa.generate')) {
     set_flash('danger', 'Anda tidak memiliki izin untuk regenerate QR Siswa.');
-    header('Location: ' . modul_url('qr_generate') . '&id=' . (int) ($_GET['id'] ?? 0));
+    header('Location: ' . modul_url('qr_generate', ['id' => (int) ($_GET['id'] ?? 0)]));
     exit;
   }
   do {
@@ -21,7 +21,7 @@ if (($_SERVER['REQUEST_METHOD'] === 'POST') && isset($_POST['regenerate'])) {
   $upd->execute([':t' => $newToken, ':id' => $id]);
   catat_aktivitas('GENERATE', 'qr_generate', 'Regenerate QR siswa ' . nama_siswa_log($id));
   set_flash('success', 'QR Code berhasil di-regenerate. QR Code lama tidak berlaku lagi.');
-  header('Location: ' . modul_url('qr_generate') . '&id=' . $id);
+  header('Location: ' . modul_url('qr_generate', ['id' => $id]));
   exit;
 }
 

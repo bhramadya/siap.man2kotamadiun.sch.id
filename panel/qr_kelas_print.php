@@ -214,7 +214,7 @@ body { background: #e9edf1; font-family: Arial, Helvetica, sans-serif; }
 
 <div class="toolbar d-flex justify-content-between align-items-center flex-wrap gap-2">
   <div class="d-flex gap-2 flex-wrap">
-    <form method="get" class="d-flex gap-2"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+    <form method="get" class="d-flex gap-2"><?= hidden_modul() ?>
       <select name="jenjang" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="">-- Per Jenjang --</option>
         <?php foreach (['X', 'XI', 'XII', 'Lainnya'] as $j): ?>
@@ -222,7 +222,7 @@ body { background: #e9edf1; font-family: Arial, Helvetica, sans-serif; }
         <?php endforeach; ?>
       </select>
     </form>
-    <form method="get" class="d-flex gap-2"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+    <form method="get" class="d-flex gap-2"><?= hidden_modul() ?>
       <select name="kelas" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="">-- Cetak Semua Kelas --</option>
         <?php foreach ($kelasList as $k): ?>

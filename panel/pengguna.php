@@ -97,7 +97,7 @@ if ($modal) {
   <?php if ($errors): ?>
     <div class="alert alert-danger"><ul class="mb-0"><?php foreach ($errors as $err) echo '<li>' . e($err) . '</li>'; ?></ul></div>
   <?php endif; ?>
-  <form method="post" autocomplete="off" action="<?= e(modul_url('pengguna')) ?>&amp;modal=1&amp;id=<?= (int) $id ?>" data-popup-form<?= $user ? ' data-dirty-guard' : '' ?>>
+  <form method="post" autocomplete="off" action="<?= e(modul_url('pengguna', ['modal' => 1, 'id' => (int) $id])) ?>" data-popup-form<?= $user ? ' data-dirty-guard' : '' ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="aksi" value="simpan">
     <div class="row g-3">
@@ -149,7 +149,7 @@ $warnaAvatar = ['#20b2a0', '#4a9be8', '#a855c8', '#f59f0b', '#e5484d', '#2fb344'
   <h4 class="mb-0"><i class="bi bi-person-badge"></i> Pengguna</h4>
   <div class="d-flex gap-2">
     <a href="<?= modul_url('hak_akses') ?>" class="btn btn-outline-secondary flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2"><i class="bi bi-shield-lock"></i><span>Hak Akses</span></a>
-    <a href="<?= modul_url('pengguna') ?>&modal=1" data-popup="<?= modul_url('pengguna') ?>&modal=1" data-popup-title="Tambah Pengguna" class="btn btn-primary flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2"><i class="bi bi-plus-circle"></i><span>Tambah Pengguna</span></a>
+    <a href="<?= e(modul_url('pengguna', ['modal' => 1])) ?>" data-popup="<?= e(modul_url('pengguna', ['modal' => 1])) ?>" data-popup-title="Tambah Pengguna" class="btn btn-primary flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2"><i class="bi bi-plus-circle"></i><span>Tambah Pengguna</span></a>
   </div>
 </div>
 
@@ -184,7 +184,7 @@ $warnaAvatar = ['#20b2a0', '#4a9be8', '#a855c8', '#f59f0b', '#e5484d', '#2fb344'
             <div class="dropdown">
               <button class="btn-dots" type="button" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="Aksi"><i class="bi bi-three-dots"></i></button>
               <ul class="dropdown-menu dropdown-menu-end shadow-sm">
-                <li><a class="dropdown-item" href="<?= modul_url('pengguna') ?>&modal=1&id=<?= (int) $u['id'] ?>" data-popup="<?= modul_url('pengguna') ?>&modal=1&id=<?= (int) $u['id'] ?>" data-popup-title="Edit Pengguna"><i class="bi bi-pencil me-2"></i>Edit</a></li>
+                <li><a class="dropdown-item" href="<?= e(modul_url('pengguna', ['modal' => 1, 'id' => (int) $u['id']])) ?>" data-popup="<?= e(modul_url('pengguna', ['modal' => 1, 'id' => (int) $u['id']])) ?>" data-popup-title="Edit Pengguna"><i class="bi bi-pencil me-2"></i>Edit</a></li>
                 <?php if (!$diriSendiri): ?>
                   <li><hr class="dropdown-divider"></li>
                   <li>

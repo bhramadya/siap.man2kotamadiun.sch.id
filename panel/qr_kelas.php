@@ -14,13 +14,13 @@ if ($kelas !== '') {
         csrf_require();
         if (!can('qr_kelas.generate')) {
             set_flash('danger', 'Anda tidak memiliki izin untuk regenerate QR Kelas.');
-            header('Location: ' . modul_url('qr_kelas') . '&kelas=' . urlencode($kelas));
+            header('Location: ' . modul_url('qr_kelas', ['kelas' => $kelas]));
             exit;
         }
         regenerate_qr_kelas($kelas);
         $admin = current_admin();
         catat_aktivitas('GENERATE', 'qr_kelas', "Regenerate QR kelas $kelas");
-        header('Location: ' . modul_url('qr_kelas') . '&kelas=' . urlencode($kelas));
+        header('Location: ' . modul_url('qr_kelas', ['kelas' => $kelas]));
         exit;
     }
 
@@ -222,7 +222,7 @@ foreach ($kelasList as $k) {
           <div class="row g-3 kelas-grid-5">
             <?php foreach ($daftarKelasJenjang as $k): ?>
               <div class="col-kelas">
-                <a href="<?= modul_url('qr_kelas') ?>&kelas=<?= urlencode($k) ?>" class="text-decoration-none">
+                <a href="<?= e(modul_url('qr_kelas', ['kelas' => $k])) ?>" class="text-decoration-none">
                   <div class="card kelas-card h-100 text-center">
                     <div class="card-body">
                       <div class="qr-thumb mx-auto mb-2" data-content="<?= e(BASE_URL . '/presensi/?gate=' . $tokenPerKelas[$k]) ?>"></div>

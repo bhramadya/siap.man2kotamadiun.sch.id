@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', function () {
 (function () {
   function parameter(form) {
     var p = new URLSearchParams(new FormData(form));
-    ['modul', 'page', 'page2', 'per_page'].forEach(function (k) { p.delete(k); });
+    ['modul', 'page', 'page2', 'limit', 'per_page'].forEach(function (k) { p.delete(k); });
     Array.from(p.keys()).forEach(function (k) { if (p.get(k) === '') p.delete(k); });
     return p.toString();
   }
@@ -352,7 +352,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var a = e.target.closest('a[data-live-href]');
     if (a) {
       var f = document.querySelector(a.getAttribute('data-live-from'));
-      if (f) a.href = a.getAttribute('data-live-href') + (parameter(f) ? '&' + parameter(f) : '');
+      if (f) { var dasar = a.getAttribute('data-live-href'), q = parameter(f); a.href = dasar + (q ? (dasar.indexOf('?') >= 0 ? '&' : '?') + q : ''); }
       return;
     }
     var b = e.target.closest('[data-open-form]');
@@ -360,7 +360,8 @@ document.addEventListener('DOMContentLoaded', function () {
       e.preventDefault();
       var form = b.closest('form');
       var q = form ? parameter(form) : '';
-      window.open(b.getAttribute('data-open-form') + (q ? '&' + q : ''), '_blank');
+      var dasarB = b.getAttribute('data-open-form');
+      window.open(dasarB + (q ? (dasarB.indexOf('?') >= 0 ? '&' : '?') + q : ''), '_blank');
     }
   });
 })();

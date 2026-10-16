@@ -77,7 +77,7 @@ $stmtK->execute([':bulan' => $bulan, ':tahun' => $tahun]);
 $rekapKelas = $stmtK->fetchAll();
 
 $namaBulan = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-$extraParams = ['bulan' => $bulan, 'tahun' => $tahun, 'kelas' => $kelas, 'per_page' => $perPage];
+$extraParams = ['bulan' => $bulan, 'tahun' => $tahun, 'kelas' => $kelas, 'limit' => $perPage];
 ?>
 <h4 class="mb-3"><i class="bi bi-bar-chart"></i> Rekap Kehadiran Bulanan</h4>
 
@@ -87,7 +87,7 @@ $extraParams = ['bulan' => $bulan, 'tahun' => $tahun, 'kelas' => $kelas, 'per_pa
     <div class="sub">Ringkasan per kelas dan rekap per siswa pada bulan terpilih (terlambat dihitung hadir).</div>
   </div>
   <div class="tbl-tools">
-    <form method="get" id="formRekap" data-live data-live-target="#hasil-live"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+    <form method="get" id="formRekap" data-live data-live-target="#hasil-live"><?= hidden_modul() ?>
       <?= render_per_page_field($perPage, false) ?>
       <select name="bulan" class="form-select">
         <?php for ($m = 1; $m <= 12; $m++): ?><option value="<?= $m ?>" <?= $m === $bulan ? 'selected' : '' ?>><?= $namaBulan[$m] ?></option><?php endfor; ?>

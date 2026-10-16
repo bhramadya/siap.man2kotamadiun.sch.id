@@ -42,7 +42,7 @@ $labelModul = [
     'qr_generate' => 'QR Siswa', 'qr_kelas' => 'QR Kelas', 'qr_kelas_print' => 'Cetak QR Kelas', 'presensi_export' => 'Ekspor Presensi', 'presensi_print' => 'Cetak Data Presensi',
     'rekap' => 'Rekap', 'rekap_print' => 'Cetak Rekap Bulanan', 'device' => 'Perangkat', 'pengaturan' => 'Pengaturan', 'profil' => 'Profil', 'login' => 'Akun Admin', 'pengguna' => 'Pengguna', 'kode_pasangan' => 'Kode Pasangan', 'kode_massal' => 'Kode Pasangan Massal', 'hak_akses' => 'Hak Akses',
 ];
-$extra = ['aksi' => $aksi, 'modul_log' => $modul, 'q' => $q, 'tanggal' => $tanggal, 'per_page' => $perPage];
+$extra = ['aksi' => $aksi, 'modul_log' => $modul, 'q' => $q, 'tanggal' => $tanggal, 'limit' => $perPage];
 ?>
 <h4 class="mb-3"><i class="bi bi-clock-history"></i> Log Aktivitas</h4>
 
@@ -52,7 +52,7 @@ $extra = ['aksi' => $aksi, 'modul_log' => $modul, 'q' => $q, 'tanggal' => $tangg
     <div class="sub">Tindakan admin yang tercatat di sistem.</div>
   </div>
   <div class="tbl-tools">
-    <form method="get" data-live data-live-target="#hasil-live"><input type="hidden" name="modul" value="log_aktivitas">
+    <form method="get" data-live data-live-target="#hasil-live"><?= hidden_modul() ?>
       <?= render_per_page_field($perPage, false) ?>
               <div class="tbl-search"><i class="bi bi-search"></i><input type="text" name="q" class="form-control" placeholder="Cari keterangan / nama admin" value="<?= e($q) ?>"></div>
               <select name="aksi" class="form-select">

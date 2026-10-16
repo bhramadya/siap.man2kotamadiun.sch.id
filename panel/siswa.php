@@ -29,7 +29,7 @@ $daftarSiswa = $stmt->fetchAll();
 
 $kelasList = $db->query('SELECT DISTINCT kelas FROM siswa ORDER BY kelas')->fetchAll(PDO::FETCH_COLUMN);
 $jurusanList = $db->query('SELECT DISTINCT jurusan FROM siswa WHERE jurusan IS NOT NULL ORDER BY jurusan')->fetchAll(PDO::FETCH_COLUMN);
-$extraParams = ['q' => $q, 'kelas' => $kelas, 'jurusan' => $jurusan, 'per_page' => $perPage];
+$extraParams = ['q' => $q, 'kelas' => $kelas, 'jurusan' => $jurusan, 'limit' => $perPage];
 ?>
 
 <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-3 mb-3">
@@ -41,7 +41,7 @@ $extraParams = ['q' => $q, 'kelas' => $kelas, 'jurusan' => $jurusan, 'per_page' 
     </a>
     <?php endif; ?>
     <?php if (can('siswa.tambah')): ?>
-    <a href="<?= modul_url('siswa_tambah') ?>" data-popup="<?= modul_url('siswa_tambah') ?>&modal=1" data-popup-title="Tambah Siswa" class="btn btn-primary flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
+    <a href="<?= modul_url('siswa_tambah') ?>" data-popup="<?= e(modul_url('siswa_tambah', ['modal' => 1])) ?>" data-popup-title="Tambah Siswa" class="btn btn-primary flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
       <i class="bi bi-plus-circle"></i><span>Tambah Siswa</span>
     </a>
     <?php endif; ?>
@@ -63,7 +63,7 @@ $sampai = $offset + count($daftarSiswa);
   </div>
 
   <div class="tbl-tools">
-    <form method="get" data-live data-live-target="#hasil-live"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+    <form method="get" data-live data-live-target="#hasil-live"><?= hidden_modul() ?>
       <?= render_per_page_field($perPage, false) ?>
       <div class="tbl-search">
         <i class="bi bi-search"></i>
@@ -106,7 +106,7 @@ $sampai = $offset + count($daftarSiswa);
               <?php else: ?>
                 <span class="avatar-sm" style="background:<?= $warna ?>"><?= e($inisial) ?></span>
               <?php endif; ?>
-              <span class="nama"><?= e($s['nama']) ?></span>
+              <a class="nama text-decoration-none text-reset" href="<?= e(modul_url('siswa_detail', ['nis' => $s['nis']])) ?>"><?= e($s['nama']) ?></a>
             </div>
           </td>
           <td><?= e($s['nisn'] ?: '-') ?></td>
@@ -119,16 +119,16 @@ $sampai = $offset + count($daftarSiswa);
               <button class="btn-dots" type="button" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="Aksi"><i class="bi bi-three-dots"></i></button>
               <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                 <?php if ($bolehUbah): ?>
-                <li><a class="dropdown-item" href="<?= modul_url('siswa_edit') ?>&id=<?= $s['id'] ?>" data-popup="<?= modul_url('siswa_edit') ?>&id=<?= $s['id'] ?>&modal=1" data-popup-title="Edit Siswa"><i class="bi bi-pencil me-2"></i>Edit</a></li>
+                <li><a class="dropdown-item" href="<?= e(modul_url('siswa_edit', ['nis' => $s['nis']])) ?>" data-popup="<?= e(modul_url('siswa_edit', ['nis' => $s['nis'], 'modal' => 1])) ?>" data-popup-title="Edit Siswa"><i class="bi bi-pencil me-2"></i>Edit</a></li>
                 <?php endif; ?>
                 <?php if ($bolehQr): ?>
-                <li><a class="dropdown-item" href="<?= modul_url('qr_generate') ?>&id=<?= $s['id'] ?>"><i class="bi bi-qr-code me-2"></i>QR Code</a></li>
+                <li><a class="dropdown-item" href="<?= e(modul_url('qr_generate', ['nis' => $s['nis']])) ?>"><i class="bi bi-qr-code me-2"></i>QR Code</a></li>
                 <?php endif; ?>
                 <?php if ($bolehDevice): ?>
-                <li><a class="dropdown-item" href="<?= modul_url('device') ?>&siswa_id=<?= $s['id'] ?>"><i class="bi bi-phone me-2"></i>Perangkat</a></li>
+                <li><a class="dropdown-item" href="<?= e(modul_url('device', ['siswa_id' => (int) $s['id']])) ?>"><i class="bi bi-phone me-2"></i>Perangkat</a></li>
                 <?php endif; ?>
                 <?php if ($bolehKode): ?>
-                <li><a class="dropdown-item" href="#" data-popup="<?= modul_url('kode_pasangan') ?>&siswa_id=<?= (int) $s['id'] ?>" data-popup-title="Kode Pasangan — <?= e($s['nama']) ?>"><i class="bi bi-key me-2"></i>Kode Pasangan</a></li>
+                <li><a class="dropdown-item" href="#" data-popup="<?= e(modul_url('kode_pasangan', ['siswa_id' => (int) $s['id']])) ?>" data-popup-title="Kode Pasangan — <?= e($s['nama']) ?>"><i class="bi bi-key me-2"></i>Kode Pasangan</a></li>
                 <?php endif; ?>
                 <?php if ($bolehHapus): ?>
                 <li><hr class="dropdown-divider"></li>

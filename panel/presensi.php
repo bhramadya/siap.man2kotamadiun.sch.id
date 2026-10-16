@@ -54,24 +54,24 @@ $kelasList = $db->query(
 )->fetchAll(PDO::FETCH_COLUMN);
 $jurusanList = $db->query('SELECT DISTINCT jurusan FROM siswa WHERE jurusan IS NOT NULL ORDER BY jurusan')->fetchAll(PDO::FETCH_COLUMN);
 
-$queryString = http_build_query(compact('tanggal', 'kelas', 'jurusan', 'status'));
-$extraParams = compact('tanggal', 'kelas', 'jurusan', 'status') + ['per_page' => $perPage];
+$queryString = bangun_query(compact('tanggal', 'kelas', 'jurusan', 'status'));
+$extraParams = compact('tanggal', 'kelas', 'jurusan', 'status') + ['limit' => $perPage];
 ?>
 <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-3 mb-3">
   <h4 class="mb-0"><i class="bi bi-calendar-check"></i> Data Presensi</h4>
   <div class="d-flex gap-2">
     <?php if (can('presensi.ekspor')): ?>
-    <a href="<?= modul_url('presensi_export') ?>&type=csv&<?= $queryString ?>" data-live-href="<?= modul_url('presensi_export') ?>&type=csv" data-live-from="#formFilter" class="btn btn-outline-success flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
+    <a href="<?= e(modul_url('presensi_export', ['type' => 'csv'])) ?><?= $queryString !== '' ? '&amp;' . e($queryString) : '' ?>" data-live-href="<?= e(modul_url('presensi_export', ['type' => 'csv'])) ?>" data-live-from="#formFilter" class="btn btn-outline-success flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
       <i class="bi bi-filetype-csv"></i><span><span class="d-none d-sm-inline">Export </span>CSV</span>
     </a>
     <?php endif; ?>
     <?php if (can('presensi.ekspor')): ?>
-    <a href="<?= modul_url('presensi_export') ?>&type=excel&<?= $queryString ?>" data-live-href="<?= modul_url('presensi_export') ?>&type=excel" data-live-from="#formFilter" class="btn btn-outline-success flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
+    <a href="<?= e(modul_url('presensi_export', ['type' => 'excel'])) ?><?= $queryString !== '' ? '&amp;' . e($queryString) : '' ?>" data-live-href="<?= e(modul_url('presensi_export', ['type' => 'excel'])) ?>" data-live-from="#formFilter" class="btn btn-outline-success flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
       <i class="bi bi-file-earmark-excel"></i><span><span class="d-none d-sm-inline">Export </span>Excel</span>
     </a>
     <?php endif; ?>
     <?php if (can('presensi.cetak')): ?>
-    <a href="<?= modul_url('presensi_print') ?>&<?= $queryString ?>" data-live-href="<?= modul_url('presensi_print') ?>" data-live-from="#formFilter" target="_blank" class="btn btn-outline-secondary flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
+    <a href="<?= modul_url('presensi_print') ?><?= $queryString !== '' ? '?' . e($queryString) : '' ?>" data-live-href="<?= modul_url('presensi_print') ?>" data-live-from="#formFilter" target="_blank" class="btn btn-outline-secondary flex-fill flex-md-grow-0 text-nowrap d-inline-flex align-items-center justify-content-center gap-2">
       <i class="bi bi-printer"></i><span>Print</span>
     </a>
     <?php endif; ?>
@@ -84,7 +84,7 @@ $extraParams = compact('tanggal', 'kelas', 'jurusan', 'status') + ['per_page' =>
     <div class="sub">Daftar presensi siswa sesuai filter di atas.</div>
   </div>
   <div class="tbl-tools no-print">
-    <form method="get" data-live data-live-target="#hasil-live" id="formFilter"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+    <form method="get" data-live data-live-target="#hasil-live" id="formFilter"><?= hidden_modul() ?>
       <?= render_per_page_field($perPage, false) ?>
         <input type="date" name="tanggal" class="form-control" value="<?= e($tanggal) ?>">
         <select name="kelas" class="form-select">

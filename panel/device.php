@@ -151,7 +151,7 @@ if (can('device.kelola')) {
 }
 $perJenjangFilter = kelompokkan_per_jenjang($kelasList);
 $settings = get_settings();
-$extraParams = ['q' => $q, 'kelas' => $kelas, 'jenjang' => $jenjang, 'status' => $statusFilter, 'siswa_id' => $focusSiswaId ?: null, 'per_page' => $perPage];
+$extraParams = ['q' => $q, 'kelas' => $kelas, 'jenjang' => $jenjang, 'status' => $statusFilter, 'siswa_id' => $focusSiswaId ?: null, 'limit' => $perPage];
 $extraParams = array_filter($extraParams, fn($v) => $v !== null && $v !== '');
 
 // ---- Data untuk modal Reset Massal (hanya siswa aktif yang punya perangkat) ----
@@ -199,7 +199,7 @@ $sasaranAwal = ($kelas !== '' && isset($massal['kelas:' . $kelas])) ? 'kelas:' .
     <?php endif; ?>
   </div>
   <div class="tbl-tools">
-    <form method="get" data-live data-live-target="#hasil-live"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+    <form method="get" data-live data-live-target="#hasil-live"><?= hidden_modul() ?>
       <?= render_per_page_field($perPage, false) ?>
       <div class="tbl-search">
         <i class="bi bi-search"></i>
@@ -320,7 +320,7 @@ $sasaranAwal = ($kelas !== '' && isset($massal['kelas:' . $kelas])) ? 'kelas:' .
                   </div>
                 </div>
               <?php else: ?>
-                <a href="#" data-popup="<?= modul_url('kode_pasangan') ?>&siswa_id=<?= (int) $d['siswa_id'] ?>" data-popup-title="Kode Pasangan — <?= e($d['nama']) ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-key"></i> Kode Pasangan</a>
+                <a href="#" data-popup="<?= e(modul_url('kode_pasangan', ['siswa_id' => (int) $d['siswa_id']])) ?>" data-popup-title="Kode Pasangan — <?= e($d['nama']) ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-key"></i> Kode Pasangan</a>
               <?php endif; ?>
               <?php endif; ?>
             </div>

@@ -17,7 +17,7 @@ jalankan_pembersihan_log_otomatis();
  */
 $menuGroups = [
     'dashboard.php'     => ['dashboard.php'],
-    'siswa.php'          => ['siswa.php', 'siswa_tambah.php', 'siswa_edit.php', 'siswa_hapus.php', 'siswa_import.php'],
+    'siswa.php'          => ['siswa.php', 'siswa_detail.php', 'siswa_tambah.php', 'siswa_edit.php', 'siswa_hapus.php', 'siswa_import.php'],
     'master_kelas.php'   => ['master_kelas.php'],
     'kenaikan_kelas.php' => ['kenaikan_kelas.php'],
     'qr_siswa.php'       => ['qr_siswa.php', 'qr_print.php', 'qr_generate.php'],

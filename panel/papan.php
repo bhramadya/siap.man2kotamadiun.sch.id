@@ -209,7 +209,7 @@ $kelasPilih = clean($_GET['kelas'] ?? '');
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  var URL_DATA = <?= json_encode(modul_url('papan') . '&data=1') ?>;
+  var URL_DATA = <?= json_encode(modul_url('papan', ['data' => 1])) ?>;
   var $ = function (id) { return document.getElementById(id); };
   var HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
   var BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];

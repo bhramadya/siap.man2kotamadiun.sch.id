@@ -29,7 +29,7 @@ $sql = "SELECT sl.*, s.nama, s.nisn, s.kelas
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
 $logs = $stmt->fetchAll();
-$extraParams1 = ['siswa' => $siswaQ, 'event' => $event, 'tanggal' => $tanggal, 'per_page' => $perPage];
+$extraParams1 = ['siswa' => $siswaQ, 'event' => $event, 'tanggal' => $tanggal, 'limit' => $perPage];
 
 $eventList = ['DEVICE_REGISTERED','DEVICE_MATCH','DEVICE_MISMATCH','DEVICE_BLOCKED','PRESENCE_SUCCESS','PRESENCE_REJECTED','ADMIN_LOGIN_FAILED','DEVICE_PAIRING_FAILED'];
 
@@ -70,7 +70,7 @@ $resetLogs = $db->query(
     <div class="sub">Presensi, perangkat, dan percobaan login yang tercatat.</div>
   </div>
   <div class="tbl-tools">
-    <form method="get" data-live data-live-target="#hasil-live"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+    <form method="get" data-live data-live-target="#hasil-live"><?= hidden_modul() ?>
       <?= render_per_page_field($perPage, false) ?>
               <div class="tbl-search"><i class="bi bi-search"></i><input type="text" name="siswa" class="form-control" placeholder="Cari NISN siswa..." value="<?= e($siswaQ) ?>"></div>
               <select name="event" class="form-select">
@@ -135,7 +135,7 @@ $resetLogs = $db->query(
   <?php if ($totalPagesReset > 1): ?>
   <div class="tbl-foot">
     <span class="text-muted small">Menampilkan <?= count($resetLogs) ?> dari <?= $totalReset ?> data (halaman <?= $page2 ?> dari <?= $totalPagesReset ?>)</span>
-    <?= render_pagination($page2, $totalPagesReset, ['per_page' => $perPage], 'page2') ?>
+    <?= render_pagination($page2, $totalPagesReset, ['limit' => $perPage], 'page2') ?>
   </div>
   <?php endif; ?>
 </div>

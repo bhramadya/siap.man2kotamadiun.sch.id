@@ -29,11 +29,11 @@ define('DEFAULT_PAGE_SIZE', 20);
  * $paramName memungkinkan beberapa tabel dengan pagination berbeda di 1 halaman
  * (misalnya "page" utk tabel pertama, "page2" utk tabel kedua).
  */
-/** Jumlah baris per halaman yang dipilih pengguna (?per_page=...), hanya nilai yang diizinkan. */
+/** Jumlah baris per halaman yang dipilih pengguna (?limit=...), hanya nilai yang diizinkan. */
 const OPSI_PER_HALAMAN = [10, 20, 50, 100];
 function get_page_size(): int
 {
-    $n = (int) ($_GET['per_page'] ?? DEFAULT_PAGE_SIZE);
+    $n = (int) ($_GET['limit'] ?? $_GET['per_page'] ?? DEFAULT_PAGE_SIZE);   // per_page = nama lama, tetap diterima
     return in_array($n, OPSI_PER_HALAMAN, true) ? $n : DEFAULT_PAGE_SIZE;
 }
 
@@ -43,7 +43,7 @@ function get_page_size(): int
  */
 function render_per_page_field(int $current, bool $submitOnChange = true): string
 {
-    $html = '<label class="per-page"><select name="per_page" class="form-select form-select-sm"'
+    $html = '<label class="per-page"><select name="limit" class="form-select form-select-sm"'
           . ($submitOnChange ? ' onchange="this.form.submit()"' : '') . ' aria-label="Jumlah data per halaman">';
     foreach (OPSI_PER_HALAMAN as $o) {
         $html .= '<option value="' . $o . '"' . ($o === $current ? ' selected' : '') . '>' . $o . '</option>';
@@ -54,9 +54,9 @@ function render_per_page_field(int $current, bool $submitOnChange = true): strin
 function render_per_page(int $current, array $hidden = []): string
 {
     $html = '<form method="get" class="per-page-form">';
-    $html .= '<input type="hidden" name="modul" value="' . e((string) ($_GET['modul'] ?? '')) . '">';
+    $html .= hidden_modul();
     foreach ($hidden as $k => $v) {
-        if ($v === '' || $v === null || in_array($k, ['page', 'per_page', 'modul'], true)) continue;
+        if ($v === '' || $v === null || in_array($k, ['page', 'limit', 'per_page', 'modul'], true)) continue;
         $html .= '<input type="hidden" name="' . e((string) $k) . '" value="' . e((string) $v) . '">';
     }
     return $html . render_per_page_field($current) . '</form>';
@@ -73,7 +73,7 @@ function get_current_page(string $paramName = 'page'): int
  * Daftar putih (whitelist) modul => file di folder panel/.
  */
 const DAFTAR_MODUL = [
-    'dashboard', 'siswa', 'siswa_tambah', 'siswa_edit', 'siswa_hapus', 'siswa_import',
+    'dashboard', 'siswa', 'siswa_detail', 'siswa_tambah', 'siswa_edit', 'siswa_hapus', 'siswa_import',
     'master_kelas', 'kenaikan_kelas', 'qr_siswa', 'qr_print', 'qr_generate', 'qr_gerbang',
     'qr_kelas', 'qr_kelas_print', 'presensi', 'presensi_export', 'presensi_print', 'rekap', 'rekap_print', 'device',
     'security_log', 'log_aktivitas', 'log_cetak', 'pengaturan', 'profil', 'pengguna', 'hak_akses', 'papan', 'kode_pasangan', 'kode_massal',
@@ -149,7 +149,7 @@ const IZIN_DEFAULT_OPERATOR = [
 /** Izin yang dibutuhkan untuk membuka tiap modul (null = semua pengguna yang login). */
 const MODUL_IZIN = [
     'dashboard' => 'dashboard.lihat',
-    'siswa' => 'siswa.lihat', 'siswa_tambah' => 'siswa.tambah', 'siswa_edit' => 'siswa.ubah',
+    'siswa' => 'siswa.lihat', 'siswa_detail' => 'siswa.lihat', 'siswa_tambah' => 'siswa.tambah', 'siswa_edit' => 'siswa.ubah',
     'siswa_hapus' => 'siswa.hapus', 'siswa_import' => 'siswa.impor',
     'master_kelas' => 'kelas.lihat', 'kenaikan_kelas' => 'kenaikan.proses',
     'qr_siswa' => 'qr_siswa.lihat', 'qr_generate' => 'qr_siswa.lihat', 'qr_print' => 'qr_siswa.cetak',
@@ -189,10 +189,142 @@ function samarkan_nama_ketat(string $nama): string
     return $hasil;
 }
 
+/**
+ * PETA URL BERSIH: nama modul => pola path.
+ * "{nis}" = NIS siswa (bukan id database), mis. /siswa/2026001/edit.
+ * Pola statis (siswa/tambah) selalu diprioritaskan di atas pola ber-{nis}.
+ * JANGAN memakai nama folder nyata (api, assets, config, includes, panel, presensi,
+ * uploads, database) sebagai segmen pertama — itu milik file/folder di server.
+ */
+const RUTE_MODUL = [
+    'dashboard'       => 'dashboard',
+    'siswa'           => 'siswa',
+    'siswa_tambah'    => 'siswa/tambah',
+    'siswa_import'    => 'siswa/import',
+    'siswa_hapus'     => 'siswa/hapus',
+    'siswa_detail'    => 'siswa/{nis}',
+    'siswa_edit'      => 'siswa/{nis}/edit',
+    'qr_generate'     => 'siswa/{nis}/qr',
+    'master_kelas'    => 'kelas',
+    'kenaikan_kelas'  => 'kelas/kenaikan',
+    'qr_siswa'        => 'qr/siswa',
+    'qr_print'        => 'qr/siswa/cetak',
+    'qr_kelas'        => 'qr/kelas',
+    'qr_kelas_print'  => 'qr/kelas/cetak',
+    'qr_gerbang'      => 'qr/gerbang',
+    'presensi'        => 'absensi',
+    'presensi_export' => 'absensi/ekspor',
+    'presensi_print'  => 'absensi/cetak',
+    'rekap'           => 'rekap',
+    'rekap_print'     => 'rekap/cetak',
+    'papan'           => 'papan',
+    'device'          => 'perangkat',
+    'kode_pasangan'   => 'perangkat/kode',
+    'kode_massal'     => 'perangkat/kode-massal',
+    'security_log'    => 'log/keamanan',
+    'log_aktivitas'   => 'log/aktivitas',
+    'log_cetak'       => 'log/cetak',
+    'pengaturan'      => 'pengaturan',
+    'profil'          => 'profil',
+    'pengguna'        => 'pengguna',
+    'hak_akses'       => 'pengguna/hak-akses',
+];
+
+/** NIS siswa dari id database (di-cache per request). null bila tidak ada. */
+function nis_dari_id(int $id): ?string
+{
+    static $cache = [];
+    if (!array_key_exists($id, $cache)) {
+        $st = getDB()->prepare('SELECT nis FROM siswa WHERE id = :id LIMIT 1');
+        $st->execute([':id' => $id]);
+        $v = $st->fetchColumn();
+        $cache[$id] = ($v === false || $v === null) ? null : (string) $v;
+    }
+    return $cache[$id];
+}
+
+/** id database dari NIS. null bila tidak ada. */
+function id_dari_nis(string $nis): ?int
+{
+    $st = getDB()->prepare('SELECT id FROM siswa WHERE nis = :nis LIMIT 1');
+    $st->execute([':nis' => $nis]);
+    $v = $st->fetchColumn();
+    return ($v === false || $v === null) ? null : (int) $v;
+}
+
+/** Query string RFC3986 (spasi = %20), tanpa parameter kosong. */
+function bangun_query(array $params): string
+{
+    $params = array_filter($params, fn($v) => $v !== null && $v !== '');
+    return $params ? http_build_query($params, '', '&', PHP_QUERY_RFC3986) : '';
+}
+
+/**
+ * Cocokkan path (tanpa slash di awal/akhir, mis. "siswa/2026001/edit") ke modul.
+ * @return array{0:string,1:array}|null  [modul, ['nis' => ...]] atau null bila tidak ada.
+ */
+function cocokkan_rute(string $path): ?array
+{
+    static $urut = null;
+    if ($urut === null) {
+        $urut = RUTE_MODUL;
+        // statis dulu, baru yang ber-{nis} (uasort stabil di PHP 8)
+        uasort($urut, fn($a, $b) => substr_count($a, '{') <=> substr_count($b, '{'));
+    }
+    $seg = $path === '' ? [] : explode('/', $path);
+    foreach ($urut as $modul => $pola) {
+        $ps = explode('/', $pola);
+        if (count($ps) !== count($seg)) continue;
+        $params = [];
+        foreach ($ps as $i => $p) {
+            if ($p === '{nis}') {
+                $nis = rawurldecode($seg[$i]);
+                if ($nis === '') continue 2;
+                $params['nis'] = $nis;
+            } elseif ($p !== $seg[$i]) {
+                continue 2;
+            }
+        }
+        return [$modul, $params];
+    }
+    return null;
+}
+
+/**
+ * URL bersih halaman panel.
+ *   modul_url('siswa')                                  -> /siswa
+ *   modul_url('siswa', ['kelas' => 'X B', 'limit' => 20]) -> /siswa?kelas=X%20B&limit=20
+ *   modul_url('siswa_edit', ['nis' => '2026001'])        -> /siswa/2026001/edit
+ * Untuk modul ber-{nis}, boleh memberi ['id' => id_db]; NIS dicari otomatis.
+ * Hasil TIDAK pernah berisi "?" bila tanpa parameter, jadi tambahan manual
+ * ('&x=1') tidak boleh dipakai — kirim lewat $params.
+ */
 function modul_url(string $modul, array $params = []): string
 {
-    $url = BASE_URL . '/index.php?modul=' . rawurlencode($modul);
-    return $params ? $url . '&' . http_build_query($params) : $url;
+    $pola = RUTE_MODUL[$modul] ?? null;
+    if ($pola !== null && strpos($pola, '{nis}') !== false) {
+        $nis = isset($params['nis']) ? (string) $params['nis'] : '';
+        if ($nis === '' && !empty($params['id'])) {
+            $nis = (string) nis_dari_id((int) $params['id']);
+            if ($nis !== '') unset($params['id']);
+        }
+        unset($params['nis']);
+        if ($nis === '') $pola = null;   // NIS tidak diketahui -> bentuk lama (router tetap melayani)
+        else $pola = str_replace('{nis}', rawurlencode($nis), $pola);
+    }
+    if ($pola === null) {
+        $q = bangun_query(['modul' => $modul] + $params);
+        return BASE_URL . '/index.php?' . $q;
+    }
+    $q = bangun_query($params);
+    return BASE_URL . '/' . $pola . ($q !== '' ? '?' . $q : '');
+}
+
+/** <input hidden modul> hanya untuk URL bentuk lama (?modul=...); URL bersih tidak membutuhkannya. */
+function hidden_modul(): string
+{
+    $m = (string) ($_GET['modul'] ?? '');
+    return $m === '' ? '' : '<input type="hidden" name="modul" value="' . e($m) . '">';
 }
 
 /**
@@ -205,9 +337,9 @@ function render_pagination(int $page, int $totalPages, array $extraParams = [], 
 
     $buildUrl = function (int $p) use ($extraParams, $paramName): string {
         $params = array_merge($extraParams, [$paramName => $p]);
-        // Pertahankan ?modul=... supaya router tidak kehilangan tujuan halaman.
+        // URL bentuk lama (?modul=...) masih butuh modul; URL bersih tidak.
         if (!empty($_GET['modul'])) $params = ['modul' => (string) $_GET['modul']] + $params;
-        return '?' . http_build_query($params);
+        return '?' . bangun_query($params);
     };
 
     // flex-wrap + pagination-sm: tidak meluber di layar HP. Teks "Sebelumnya/Berikutnya"

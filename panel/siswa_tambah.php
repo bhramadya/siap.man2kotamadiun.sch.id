@@ -105,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <?php if (!$modal): ?><div class="card">
   <div class="card-body"><?php endif; ?>
-    <form method="post" enctype="multipart/form-data"<?= $modal ? ' action="' . e(modul_url('siswa_tambah')) . '&amp;modal=1" data-popup-form' : '' ?>>
+    <form method="post" enctype="multipart/form-data"<?= $modal ? ' action="' . e(modul_url('siswa_tambah', ['modal' => 1])) . '" data-popup-form' : '' ?>>
       <?= csrf_field() ?>
       <div class="row g-3">
         <div class="col-md-4">

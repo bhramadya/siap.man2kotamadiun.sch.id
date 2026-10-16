@@ -16,7 +16,7 @@ if (!$siswa) {
 
 $binding = get_device_binding($siswaId);
 $settings = get_settings();
-$aksiUrl = e(modul_url('kode_pasangan')) . '&amp;siswa_id=' . (int) $siswaId;
+$aksiUrl = e(modul_url('kode_pasangan', ['siswa_id' => (int) $siswaId]));
 $hasil = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$binding) {
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$binding) {
 <?php if ($binding): ?>
   <div class="alert alert-warning mb-3">
     Siswa ini <strong>sudah memiliki perangkat terdaftar</strong>. Untuk mendaftarkan perangkat baru, reset perangkatnya dulu di
-    <a href="<?= modul_url('device') ?>&siswa_id=<?= (int) $siswaId ?>">Manajemen Perangkat</a>, lalu buat kode di sini.
+    <a href="<?= e(modul_url('device', ['siswa_id' => (int) $siswaId])) ?>">Manajemen Perangkat</a>, lalu buat kode di sini.
   </div>
   <div class="d-flex justify-content-end"><button type="button" class="btn btn-light border" data-bs-dismiss="modal">Tutup</button></div>
 

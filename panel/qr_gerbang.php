@@ -30,7 +30,7 @@ $qr = generate_qr_dinamis($lokasi);
     <div id="countdown"><?= (int)$qr['durasi_detik'] ?></div>
     <p class="text-muted small">Kode ini otomatis berganti secara berkala untuk keamanan.</p>
     <div class="no-print mt-3">
-      <a href="<?= modul_url('qr_gerbang') ?>&lokasi=<?= e($lokasi) ?>" class="btn btn-outline-light btn-sm">Muat Ulang Sekarang</a>
+      <a href="<?= e(modul_url('qr_gerbang', ['lokasi' => $lokasi])) ?>" class="btn btn-outline-light btn-sm">Muat Ulang Sekarang</a>
     </div>
   </div>
 

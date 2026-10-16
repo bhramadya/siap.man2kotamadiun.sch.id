@@ -24,13 +24,14 @@ function require_login(): void
         header('Location: ' . BASE_URL . '/login.php');
         exit;
     }
-    // Akses langsung ke /panel/xxx diarahkan ke index.php?modul=xxx (GET saja).
+    // Akses langsung ke /panel/xxx diarahkan ke URL bersih modul tsb (GET saja).
     if (!defined('APP_ROUTER') && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET'
         && strpos(str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? ''), '/panel/') !== false) {
         $modul = basename($_SERVER['SCRIPT_NAME'], '.php');
         if (in_array($modul, DAFTAR_MODUL, true)) {
-            $qs = $_SERVER['QUERY_STRING'] ?? '';
-            header('Location: ' . modul_url($modul) . ($qs !== '' ? '&' . $qs : ''), true, 302);
+            parse_str((string) ($_SERVER['QUERY_STRING'] ?? ''), $qp);
+            unset($qp['modul']);
+            header('Location: ' . modul_url($modul, $qp), true, 302);
             exit;
         }
     }

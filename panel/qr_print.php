@@ -207,7 +207,7 @@ $logoFile = !empty($settings['logo']) ? $settings['logo'] : null;
 <body>
   <div class="container py-4 no-print">
     <div class="d-flex justify-content-between mb-3">
-      <form method="get" class="d-flex gap-2"><input type="hidden" name="modul" value="<?= e($_GET['modul'] ?? '') ?>">
+      <form method="get" class="d-flex gap-2"><?= hidden_modul() ?>
         <select name="kelas" class="form-select form-select-sm" onchange="this.form.submit()">
           <option value="">-- Cetak Massal per Kelas --</option>
           <?php foreach ($kelasList as $k): ?>
