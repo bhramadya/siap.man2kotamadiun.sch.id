@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Konfigurasi koneksi database (PDO)
  * Ganti nilai di bawah sesuai environment hosting/XAMPP/aaPanel Anda.
@@ -6,13 +7,14 @@
 
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'siapabsen');
-define('DB_USER', 'siapabsen');
-define('DB_PASS', 'siapabsen');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
 // Base URL aplikasi (dipakai untuk membuat isi QR Code siswa).
 // Contoh production: https://domainsekolah.sch.id
-define('BASE_URL', 'https://siap.man2kotamadiun.sch.id');
+// define('BASE_URL', 'https://siap.man2kotamadiun.sch.id');
+define('BASE_URL', 'http://localhost/siap.man2kotamadiun.sch.id');
 
 // Zona waktu server — WAJIB konsisten agar validasi jam presensi akurat.
 date_default_timezone_set('Asia/Jakarta');
