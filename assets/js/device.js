@@ -1,5 +1,4 @@
 /**
-<<<<<<< HEAD
  * Device UUID — dibuat SEKALI per instalasi browser/WebView dan disimpan
  * persisten agar sama di kunjungan berikutnya. Server hanya meng-hash UUID
  * ini (lihat includes/device_binding.php); User-Agent TIDAK ikut dihash,
@@ -36,29 +35,11 @@ function getOrCreateDeviceUuid() {
       document.cookie = KEY + '=' + encodeURIComponent(uuid) +
         '; max-age=34560000; path=/; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
     } catch (e) {}
-=======
- * Device UUID — dibuat SEKALI per instalasi browser, disimpan di localStorage
- * agar tetap sama di kunjungan berikutnya (persisten selama data browser
- * tidak dihapus). UUID mentah ini TIDAK PERNAH dipakai sebagai bukti tunggal:
- * server akan meng-hash-nya bersama User-Agent (lihat includes/device_binding.php).
- *
- * Catatan jujur: ini BUKAN hardware ID permanen. Jika siswa menghapus data
- * browser, memakai mode incognito, ganti browser, atau ganti perangkat,
- * UUID baru akan dibuat dan perangkat dianggap baru oleh sistem.
- */
-function getOrCreateDeviceUuid() {
-  const KEY = 'presensi_device_uuid';
-  let uuid = localStorage.getItem(KEY);
-  if (!uuid) {
-    uuid = (crypto.randomUUID ? crypto.randomUUID() : fallbackUuid());
-    localStorage.setItem(KEY, uuid);
->>>>>>> 6bcabbc39289f07eb4e728fb4aa648439ed80733
   }
   return uuid;
 }
 
 function fallbackUuid() {
-<<<<<<< HEAD
   // Gunakan CSPRNG bila ada; Math.random hanya cadangan terakhir
   const bytes = new Uint8Array(16);
   if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
@@ -67,11 +48,4 @@ function fallbackUuid() {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const h = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
-=======
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
->>>>>>> 6bcabbc39289f07eb4e728fb4aa648439ed80733
 }
