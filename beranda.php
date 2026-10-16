@@ -79,6 +79,10 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
   @keyframes kedip { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
   #feed { max-height: 460px; overflow-y: auto; margin: 0 -22px; scrollbar-width: none; }
   #feed::-webkit-scrollbar { display: none; }
+  /* Mode kelas (perangkat terdaftar): semua siswa yang sudah presensi, scrollbar tipis ditampilkan sebagai petunjuk bisa di-scroll */
+  #feed.kelas { scrollbar-width: thin; scrollbar-color: #cbd3e1 transparent; }
+  #feed.kelas::-webkit-scrollbar { display: block; width: 6px; }
+  #feed.kelas::-webkit-scrollbar-thumb { background: #cbd3e1; border-radius: 6px; }
   .fi { display: flex; align-items: center; gap: 13px; padding: 11px 22px; border-bottom: 1px solid #f1f3f8; }
   .fi:last-child { border-bottom: 0; }
   .fi .av { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .82rem; }
@@ -287,7 +291,9 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
   }
 
   function gambarFeed(d) {
-    var feed = $('feed'); feed.textContent = '';
+    var feed = $('feed'), posisi = feed.scrollTop;   // jaga posisi scroll agar tidak melompat tiap pembaruan (8 dtk)
+    feed.textContent = '';
+    feed.classList.toggle('kelas', d.mode === 'kelas');
     if (!d.terbaru.length) {
       var k = document.createElement('div'); k.className = 'kosong';
       k.textContent = d.efektif ? 'Belum ada siswa yang presensi hari ini.' : 'Hari ini bukan hari efektif presensi.';
@@ -314,6 +320,7 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
       feed.appendChild(it);
     });
     sudahAda = set;
+    feed.scrollTop = posisi;
   }
 
   function render(d) {
@@ -336,7 +343,7 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
     cb.className = 'chip ' + (d.efektif ? 'ok' : 'tutup');
     cb.textContent = d.efektif ? 'Presensi dibuka hari ini' : 'Hari ini libur — presensi ditutup';
     if (d.jam_masuk) { var cj = $('chipJam'); cj.style.display = ''; cj.textContent = 'Masuk ' + d.jam_masuk + (d.batas_terlambat ? ' · terlambat setelah ' + d.batas_terlambat : ''); }
-    $('waktuUpdate').textContent = 'Diperbarui ' + d.waktu;
+    $('waktuUpdate').textContent = (modeKelas ? d.terbaru.length + ' siswa sudah presensi' + (d.terbaru.length > 5 ? ' · gulir untuk melihat semua' : '') + ' · ' : '') + 'Diperbarui ' + d.waktu;
     $('liveBadge').classList.remove('putus'); $('liveBadge').textContent = 'LIVE';
   }
 

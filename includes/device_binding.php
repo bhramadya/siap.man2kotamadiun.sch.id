@@ -6,25 +6,56 @@
  * Modul ini TIDAK menerima input mentah "device_id" dari klien sebagai
  * bukti tunggal. Klien (JS) mengirim sebuah UUID instalasi yang
  * tersimpan persisten di localStorage (dibuat sekali oleh browser).
- * Server menggabungkan UUID tersebut dengan atribut browser lain
- * (User-Agent) lalu meng-hash-nya (SHA-256) sebelum disimpan/dibandingkan.
+ * Server meng-hash UUID tersebut (SHA-256) untuk dibandingkan.
  *
- * Device mentah TIDAK PERNAH disimpan di database — hanya hash-nya.
+ * PENTING: User-Agent SENGAJA TIDAK ikut di-hash. UA berubah otomatis setiap
+ * Chrome / Android System WebView ter-update (mis. 154.0.8037.106 -> .107),
+ * sehingga hash lama tidak cocok lagi dan perangkat yang sah dianggap
+ * "belum terdaftar". UUID acak 122-bit sudah cukup sebagai identitas;
+ * UA mudah dipalsukan sehingga tidak menambah keamanan nyata.
  * =====================================================================
  */
 
 require_once __DIR__ . '/functions.php';
 
+/** Versi skema hash. Naikkan bila rumus hash berubah lagi. */
+const DEVICE_HASH_VERSI = 'v2';
+
 /**
- * Membentuk device_hash dari UUID instalasi (kiriman klien) + User-Agent.
- * UUID sendiri sudah acak & unik per-install, User-Agent hanya menambah
- * sedikit entropi/konteks. Kombinasi ini di-hash agar nilai mentah tidak
- * pernah tersimpan.
+ * Membentuk device_hash HANYA dari UUID instalasi (kiriman klien) — stabil
+ * walau browser/WebView ter-update. TIDAK memakai User-Agent.
+ *
+ * Self-healing: baris binding lama (skema v1 = UUID + User-Agent) otomatis
+ * dimigrasikan ke hash v2 lewat kolom device_uuid, sekali per UUID per
+ * request, sehingga perangkat yang sudah terdaftar tidak perlu daftar ulang.
  */
 function build_device_hash(string $installUuid): string
 {
-    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    return hash('sha256', $installUuid . '|' . $ua);
+    $hash = hash('sha256', DEVICE_HASH_VERSI . '|' . $installUuid);
+    sinkronkan_hash_perangkat($installUuid, $hash);
+    return $hash;
+}
+
+/**
+ * Migrasi otomatis hash lama (v1) -> v2 untuk perangkat dengan UUID ini.
+ * Aman dipanggil berulang: hanya mengubah baris yang hash-nya belum v2,
+ * dan hanya berjalan sekali per UUID dalam satu request.
+ */
+function sinkronkan_hash_perangkat(string $installUuid, string $hashBaru): void
+{
+    static $sudah = [];
+    if (isset($sudah[$installUuid]) || !is_valid_install_uuid($installUuid)) return;
+    $sudah[$installUuid] = true;
+    try {
+        $stmt = getDB()->prepare(
+            'UPDATE device_bindings SET device_hash = :baru
+             WHERE device_uuid = :uuid AND device_hash <> :baru'
+        );
+        $stmt->execute([':baru' => $hashBaru, ':uuid' => $installUuid]);
+    } catch (PDOException $e) {
+        // Bentrok UNIQUE (sangat jarang) -> abaikan; jangan sampai memblokir presensi.
+        error_log('sinkronkan_hash_perangkat: ' . $e->getMessage());
+    }
 }
 
 /**

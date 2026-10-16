@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Konfigurasi koneksi database (PDO)
  * Ganti nilai di bawah sesuai environment hosting/XAMPP/aaPanel Anda.
@@ -6,8 +7,8 @@
 
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'siapabsen');
-define('DB_USER', 'siapabsen');
-define('DB_PASS', 'siapabsen');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
 // Base URL aplikasi (dipakai untuk membuat isi QR Code siswa).
