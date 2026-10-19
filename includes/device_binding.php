@@ -48,10 +48,12 @@ function sinkronkan_hash_perangkat(string $installUuid, string $hashBaru): void
     $sudah[$installUuid] = true;
     try {
         $stmt = getDB()->prepare(
+            // Nama parameter TIDAK boleh dipakai dua kali: koneksi memakai prepared statement asli
+            // (ATTR_EMULATE_PREPARES=false), sehingga :baru ganda menimbulkan SQLSTATE[HY093].
             'UPDATE device_bindings SET device_hash = :baru
-             WHERE device_uuid = :uuid AND device_hash <> :baru'
+             WHERE device_uuid = :uuid AND device_hash <> :baru_cek'
         );
-        $stmt->execute([':baru' => $hashBaru, ':uuid' => $installUuid]);
+        $stmt->execute([':baru' => $hashBaru, ':uuid' => $installUuid, ':baru_cek' => $hashBaru]);
     } catch (PDOException $e) {
         // Bentrok UNIQUE (sangat jarang) -> abaikan; jangan sampai memblokir presensi.
         error_log('sinkronkan_hash_perangkat: ' . $e->getMessage());

@@ -32,7 +32,7 @@ function identify_siswa_by_token(string $qrToken): ?array
 }
 
 /**
- * Cari siswa yang device-nya (uuid+UA -> hash) sudah terdaftar dan aktif.
+ * Cari siswa yang device-nya (uuid -> hash) sudah terdaftar dan aktif.
  * Dipakai untuk auto-identify tanpa perlu scan QR pribadi setiap hari.
  */
 function identify_siswa_by_device(string $installUuid): ?array
@@ -58,7 +58,9 @@ function identify_siswa_by_device(string $installUuid): ?array
  */
 function sudah_presensi_hari_ini(int $siswaId): ?array
 {
-    $stmt = getDB()->prepare('SELECT * FROM presensi WHERE siswa_id = :sid AND tanggal = :tgl LIMIT 1');
+    // Baris izin/sakit yang DISETUJUI (metode PENGAJUAN) bukan presensi kehadiran: siswa yang tetap
+    // datang boleh presensi, dan baris itu digantikan oleh presensi HADIR (lihat proses_simpan_presensi).
+    $stmt = getDB()->prepare("SELECT * FROM presensi WHERE siswa_id = :sid AND tanggal = :tgl AND metode <> 'PENGAJUAN' LIMIT 1");
     $stmt->execute([':sid' => $siswaId, ':tgl' => date('Y-m-d')]);
     return $stmt->fetch() ?: null;
 }
@@ -209,15 +211,32 @@ function proses_simpan_presensi(int $siswaId, string $gateToken, string $install
     // nanti, riwayat presensi ini TETAP tercatat sebagai kejadian di kelas
     // yang benar, tidak ikut "pindah" ke kelas siswa yg baru di laporan).
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    $stmt = $db->prepare(
-        'INSERT INTO presensi (siswa_id, kelas_saat_presensi, tanggal, jam_masuk, status, metode, device_info, ip_address, latitude, longitude, created_at)
-         VALUES (:sid, :kelas, :tgl, :jam, :status, "QR", :device_info, :ip, :lat, :lng, NOW())'
-    );
-    $stmt->execute([
+    $nilai = [
         ':sid' => $siswaId, ':kelas' => $siswa['kelas'], ':tgl' => $tanggal, ':jam' => $jam, ':status' => $statusPresensi,
         ':device_info' => substr($ua, 0, 255), ':ip' => get_client_ip(),
         ':lat' => $lat, ':lng' => $lng,
-    ]);
+    ];
+    // Bila hari ini sudah ada baris izin/sakit yang disetujui tetapi siswa ternyata hadir, presensi HADIR
+    // yang berlaku: baris itu diganti (bukan ditambah), dan izin hari itu ditandai "dipakai_hadir".
+    $ganti = $db->prepare(
+        "UPDATE presensi SET kelas_saat_presensi = :kelas, jam_masuk = :jam, status = :status, metode = 'QR',
+                device_info = :device_info, ip_address = :ip, latitude = :lat, longitude = :lng, created_at = NOW()
+         WHERE siswa_id = :sid AND tanggal = :tgl AND metode = 'PENGAJUAN'"
+    );
+    $ganti->execute($nilai);
+    if ($ganti->rowCount() > 0) {
+        try {
+            $db->prepare("UPDATE izin_hari h JOIN izin_pengajuan p ON p.id = h.pengajuan_id SET h.hasil = 'dipakai_hadir'
+                          WHERE p.siswa_id = :sid AND h.tanggal = :tgl AND h.hasil = 'diterapkan'")
+               ->execute([':sid' => $siswaId, ':tgl' => $tanggal]);
+        } catch (PDOException $e) { /* tabel pengajuan belum ada: tidak masalah */ }
+    } else {
+        $stmt = $db->prepare(
+            'INSERT INTO presensi (siswa_id, kelas_saat_presensi, tanggal, jam_masuk, status, metode, device_info, ip_address, latitude, longitude, created_at)
+             VALUES (:sid, :kelas, :tgl, :jam, :status, "QR", :device_info, :ip, :lat, :lng, NOW())'
+        );
+        $stmt->execute($nilai);
+    }
 
     // 11. Security log
     security_log($siswaId, 'PRESENCE_SUCCESS', build_device_hash($installUuid), "Presensi $statusPresensi jam $jam");

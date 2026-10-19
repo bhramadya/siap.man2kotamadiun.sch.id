@@ -73,7 +73,7 @@ function get_current_page(string $paramName = 'page'): int
  * Daftar putih (whitelist) modul => file di folder panel/.
  */
 const DAFTAR_MODUL = [
-    'dashboard', 'siswa', 'siswa_detail', 'siswa_tambah', 'siswa_edit', 'siswa_hapus', 'siswa_import',
+    'dashboard', 'siswa', 'siswa_detail', 'akun_siswa', 'izin', 'izin_detail', 'izin_lampiran', 'siswa_tambah', 'siswa_edit', 'siswa_hapus', 'siswa_import',
     'master_kelas', 'kenaikan_kelas', 'qr_siswa', 'qr_print', 'qr_generate', 'qr_gerbang',
     'qr_kelas', 'qr_kelas_print', 'presensi', 'presensi_export', 'presensi_print', 'rekap', 'rekap_print', 'device',
     'security_log', 'log_aktivitas', 'log_cetak', 'pengaturan', 'profil', 'pengguna', 'hak_akses', 'papan', 'kode_pasangan', 'kode_massal',
@@ -96,6 +96,14 @@ const DAFTAR_IZIN = [
         'siswa.ubah'   => 'Mengubah data siswa',
         'siswa.hapus'  => 'Menghapus siswa',
         'siswa.impor'  => 'Import siswa (Excel/CSV)',
+    ],
+    'Pengajuan Izin' => [
+        'izin.lihat'  => 'Melihat pengajuan izin/sakit siswa & lampiran surat (data kesehatan)',
+        'izin.proses' => 'Menyetujui, menolak, mencabut pengajuan & menghapus lampiran lama',
+    ],
+    'Akun Siswa' => [
+        'akun_siswa.lihat'  => 'Melihat daftar akun portal siswa',
+        'akun_siswa.kelola' => 'Menerbitkan kode aktivasi, reset, blokir akun siswa & membuka/menutup portal',
     ],
     'Kelas' => [
         'kelas.lihat'     => 'Melihat Master Kelas',
@@ -149,7 +157,7 @@ const IZIN_DEFAULT_OPERATOR = [
 /** Izin yang dibutuhkan untuk membuka tiap modul (null = semua pengguna yang login). */
 const MODUL_IZIN = [
     'dashboard' => 'dashboard.lihat',
-    'siswa' => 'siswa.lihat', 'siswa_detail' => 'siswa.lihat', 'siswa_tambah' => 'siswa.tambah', 'siswa_edit' => 'siswa.ubah',
+    'siswa' => 'siswa.lihat', 'siswa_detail' => 'siswa.lihat', 'akun_siswa' => 'akun_siswa.lihat', 'izin' => 'izin.lihat', 'izin_detail' => 'izin.lihat', 'izin_lampiran' => 'izin.lihat', 'siswa_tambah' => 'siswa.tambah', 'siswa_edit' => 'siswa.ubah',
     'siswa_hapus' => 'siswa.hapus', 'siswa_import' => 'siswa.impor',
     'master_kelas' => 'kelas.lihat', 'kenaikan_kelas' => 'kenaikan.proses',
     'qr_siswa' => 'qr_siswa.lihat', 'qr_generate' => 'qr_siswa.lihat', 'qr_print' => 'qr_siswa.cetak',
@@ -202,6 +210,10 @@ const RUTE_MODUL = [
     'siswa_tambah'    => 'siswa/tambah',
     'siswa_import'    => 'siswa/import',
     'siswa_hapus'     => 'siswa/hapus',
+    'akun_siswa'      => 'akun-siswa',
+    'izin'            => 'izin',
+    'izin_detail'     => 'izin/{id}',
+    'izin_lampiran'   => 'izin/{id}/lampiran',
     'siswa_detail'    => 'siswa/{nis}',
     'siswa_edit'      => 'siswa/{nis}/edit',
     'qr_generate'     => 'siswa/{nis}/qr',
@@ -281,6 +293,9 @@ function cocokkan_rute(string $path): ?array
                 $nis = rawurldecode($seg[$i]);
                 if ($nis === '') continue 2;
                 $params['nis'] = $nis;
+            } elseif ($p === '{id}') {
+                if (!ctype_digit($seg[$i]) || strlen($seg[$i]) > 10) continue 2;
+                $params['id'] = (int) $seg[$i];
             } elseif ($p !== $seg[$i]) {
                 continue 2;
             }
@@ -311,6 +326,12 @@ function modul_url(string $modul, array $params = []): string
         unset($params['nis']);
         if ($nis === '') $pola = null;   // NIS tidak diketahui -> bentuk lama (router tetap melayani)
         else $pola = str_replace('{nis}', rawurlencode($nis), $pola);
+    }
+    if ($pola !== null && strpos($pola, '{id}') !== false) {
+        $idUrl = (int) ($params['id'] ?? 0);
+        unset($params['id']);
+        $pola = $idUrl > 0 ? str_replace('{id}', (string) $idUrl, $pola) : null;   // tanpa id -> bentuk lama (id=0)
+        if ($pola === null) $params['id'] = 0;
     }
     if ($pola === null) {
         $q = bangun_query(['modul' => $modul] + $params);
@@ -463,6 +484,7 @@ function get_settings(): array
                 'device_wajib_kode' => 'TINYINT(1) NOT NULL DEFAULT 0',
                 'alamat_sekolah' => 'TEXT NULL',
                 'nama_kepala'    => 'VARCHAR(150) NULL',
+                'portal_siswa_aktif' => 'TINYINT(1) NOT NULL DEFAULT 1',
             ];
             $berubah = false;
             foreach ($kolomBaru as $kolom => $definisi) {
