@@ -79,14 +79,16 @@ try {
     ];
 
     if ($saya) {
-        $st = $db->prepare('SELECT status, jam_masuk FROM presensi WHERE siswa_id = :s AND tanggal = CURDATE() LIMIT 1');
+        $st = $db->prepare('SELECT status, jam_masuk, metode FROM presensi WHERE siswa_id = :s AND tanggal = CURDATE() LIMIT 1');
         $st->execute([':s' => $saya['id']]);
         $p = $st->fetch();
         $out['kelas'] = $kelas;
         $out['saya'] = [
             'nama' => $saya['nama'],
-            'status' => $p['status'] ?? null,
-            'jam' => $p ? substr((string) $p['jam_masuk'], 0, 5) : null,
+            // Baris izin/sakit disetujui bukan kehadiran: kirim sebagai 'izin', bukan 'status'.
+            'status' => ($p && $p['metode'] !== 'PENGAJUAN') ? $p['status'] : null,
+            'izin' => ($p && $p['metode'] === 'PENGAJUAN') ? $p['status'] : null,
+            'jam' => ($p && $p['metode'] !== 'PENGAJUAN') ? substr((string) $p['jam_masuk'], 0, 5) : null,
         ];
     }
 

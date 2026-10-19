@@ -3,6 +3,19 @@ require_once __DIR__ . '/../includes/header.php';
 
 $db = getDB();
 
+// Pengingat untuk petugas piket: ada pengajuan izin/sakit yang menunggu keputusan.
+if (can_modul('izin')) {
+    require_once __DIR__ . '/../includes/izin.php';
+    $izinMenunggu = izin_menunggu_jumlah();
+    if ($izinMenunggu > 0): ?>
+<a class="alert alert-warning d-flex align-items-center gap-2 text-decoration-none mb-3" href="<?= e(modul_url('izin')) ?>">
+  <i class="bi bi-envelope-paper fs-5"></i>
+  <span><strong><?= $izinMenunggu ?> pengajuan izin/sakit</strong> menunggu persetujuan.</span>
+  <span class="ms-auto fw-semibold">Tinjau &rarr;</span>
+</a>
+<?php endif;
+}
+
 $totalSiswa = (int) $db->query('SELECT COUNT(*) c FROM siswa WHERE status = "aktif"')->fetch()['c'];
 
 $today = date('Y-m-d');
@@ -342,7 +355,7 @@ $warnaStatus = ['HADIR' => 'success', 'TERLAMBAT' => 'warning', 'IZIN' => 'info'
             <tbody>
               <?php foreach ($histori as $h): ?>
                 <tr>
-                  <td class="text-nowrap small"><?= e(date('d/m', strtotime($h['tanggal']))) ?> <span class="text-muted"><?= e(substr((string) $h['jam_masuk'], 0, 5)) ?></span></td>
+                  <td class="text-nowrap small"><?= e(date('d/m', strtotime($h['tanggal']))) ?> <span class="text-muted"><?= $h['metode'] === 'PENGAJUAN' ? '—' : e(substr((string) $h['jam_masuk'], 0, 5)) ?></span></td>
                   <td class="small"><?= e($h['nama']) ?></td>
                   <td class="small text-nowrap"><?= e($h['kelas']) ?></td>
                   <td><span class="badge bg-<?= $warnaStatus[$h['status']] ?? 'secondary' ?>"><?= e($h['status']) ?></span></td>

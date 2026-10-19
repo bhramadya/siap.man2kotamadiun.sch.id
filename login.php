@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/portal.php';
 
 if (is_logged_in()) {
     header('Location: index.php');
@@ -7,6 +8,9 @@ if (is_logged_in()) {
 }
 
 $error = '';
+$info = '';
+if (($_GET['aktif'] ?? '') === '1') $info = 'Akun berhasil diaktifkan. Silakan masuk dengan NISN dan password baru Anda.';
+elseif (($_GET['keluar'] ?? '') === '1') $info = 'Anda sudah keluar.';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify($_POST['csrf_token'] ?? '')) {
@@ -18,34 +22,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($username === '' || $password === '') {
             $error = 'Username dan password wajib diisi.';
         } else {
-            $sisaKunci = login_kunci_sisa($username);
-            if ($sisaKunci > 0) {
-                // Terlalu banyak percobaan gagal: jangan periksa password sama sekali.
-                security_log(null, 'ADMIN_LOGIN_LOCKED', null, 'Login diblokir sementara untuk username: ' . substr($username, 0, 50));
-                $error = 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . (int) ceil($sisaKunci / 60) . ' menit.';
-                usleep(300000);
-            } else {
-                $stmt = getDB()->prepare('SELECT * FROM users WHERE username = :u AND status = "aktif" LIMIT 1');
-                $stmt->execute([':u' => $username]);
-                $user = $stmt->fetch();
+            // SATU halaman masuk untuk semua. Bila ada PETUGAS (admin/operator) dengan username ini,
+            // alurnya login petugas. Bila tidak ada, input dianggap NISN siswa dan masuk ke Portal
+            // Siswa (sesi TERPISAH). Pesan galat dan jeda waktu kedua jalur sengaja dibuat sama,
+            // supaya tidak ada yang bisa menebak username petugas dari perbedaan respons.
+            $cekPetugas = getDB()->prepare('SELECT 1 FROM users WHERE username = :u LIMIT 1');
+            $cekPetugas->execute([':u' => $username]);
 
-                if ($user && password_verify($password, $user['password'])) {
-                    session_regenerate_id(true);
-                    $_SESSION['admin_id'] = $user['id'];
-                    $_SESSION['last_regen'] = time();
-                    login_bersihkan($username);
-                    catat_aktivitas('LOGIN', 'login', 'Login berhasil: ' . $user['username']);
-                    if ($password === 'admin123') {
-                        set_flash('warning', 'Password Anda masih password bawaan (admin123). Segera ganti di menu Profil Akun.');
-                    }
-                    header('Location: index.php');
-                    exit;
+            if ($cekPetugas->fetchColumn()) {
+                $sisaKunci = login_kunci_sisa($username);
+                if ($sisaKunci > 0) {
+                    // Terlalu banyak percobaan gagal: jangan periksa password sama sekali.
+                    security_log(null, 'ADMIN_LOGIN_LOCKED', null, 'Login diblokir sementara untuk username: ' . substr($username, 0, 50));
+                    $error = 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . (int) ceil($sisaKunci / 60) . ' menit.';
+                    usleep(300000);
                 } else {
-                    login_catat_gagal($username);
-                    security_log(null, 'ADMIN_LOGIN_FAILED', null, 'Login admin gagal untuk username: ' . substr($username, 0, 50));
-                    $error = 'Username atau password salah.';
-                    usleep(300000); // mitigasi brute force sederhana
+                    $stmt = getDB()->prepare('SELECT * FROM users WHERE username = :u AND status = "aktif" LIMIT 1');
+                    $stmt->execute([':u' => $username]);
+                    $user = $stmt->fetch();
+
+                    if ($user && password_verify($password, $user['password'])) {
+                        session_regenerate_id(true);
+                        $_SESSION['admin_id'] = $user['id'];
+                        $_SESSION['last_regen'] = time();
+                        login_bersihkan($username);
+                        catat_aktivitas('LOGIN', 'login', 'Login berhasil: ' . $user['username']);
+                        if ($password === 'admin123') {
+                            set_flash('warning', 'Password Anda masih password bawaan (admin123). Segera ganti di menu Profil Akun.');
+                        }
+                        header('Location: index.php');
+                        exit;
+                    } else {
+                        login_catat_gagal($username);
+                        security_log(null, 'ADMIN_LOGIN_FAILED', null, 'Login admin gagal untuk username: ' . substr($username, 0, 50));
+                        $error = 'Username atau password salah.';
+                        usleep(300000); // mitigasi brute force sederhana
+                    }
                 }
+            } else {
+                $nisn = portal_nisn($username);
+                if ($nisn !== '' && portal_aktif() && portal_siapkan_tabel()) {
+                    $hasilSiswa = portal_coba_login($nisn, $password);
+                } else {
+                    password_verify($password, PORTAL_DUMMY_HASH);   // samakan waktu respons
+                    $hasilSiswa = ['ok' => false];
+                }
+
+                if (!empty($hasilSiswa['ok'])) {
+                    session_write_close();                 // tutup sesi petugas; portal memakai sesi sendiri
+                    portal_mulai_sesi();
+                    portal_masuk_sesi($hasilSiswa['akun']);
+                    header('Location: ' . portal_url());
+                    exit;
+                }
+                $error = !empty($hasilSiswa['terkunci'])
+                    ? 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . (int) ceil($hasilSiswa['sisa'] / 60) . ' menit.'
+                    : 'Username atau password salah.';
+                usleep(300000);
             }
         }
     }
@@ -64,10 +97,12 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
 <meta name="theme-color" content="#0b3a27">
 <title>Masuk — <?= e($namaSekolah) ?></title>
 <?= favicon_tag() ?>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="<?= BASE_URL ?>/assets/css/vendor/bootstrap.min.css" rel="stylesheet">
+<link href="<?= BASE_URL ?>/assets/css/vendor/bootstrap-icons.min.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link href="assets/css/style.css" rel="stylesheet">
+<!-- Poppins hanya dipakai tampilan desktop; di HP tidak memblokir render -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" media="(min-width: 900px)">
+<link href="<?= BASE_URL ?>/assets/css/style.css" rel="stylesheet">
 <style>
   :root {
     --hj-tua: #0f5c3c;       /* tombol & judul */
@@ -125,6 +160,9 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
 
   .lg-err { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 14px; padding: 10px 14px; border-radius: 16px; background: #fdecec; color: #b42318; font-size: 12.5px; font-weight: 600; line-height: 1.45; }
   .lg-err i { margin-top: 1px; }
+  .lg-ok { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 14px; padding: 10px 14px; border-radius: 16px; background: #e3f4ea; color: #1a7f4b; font-size: 12.5px; font-weight: 600; line-height: 1.45; }
+  .lg-ok i { margin-top: 1px; }
+  .lg-ok.netral { background: #eef4ff; color: #1d4ed8; }
 
   .lg-field { position: relative; margin-bottom: 14px; }
   .lg-field input {
@@ -177,6 +215,84 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
     .lg-body { padding: 34px 28px calc(22px + env(safe-area-inset-bottom, 0px)); }
   }
   @media (prefers-reduced-motion: reduce) { .lg-back, .lg-btn, .lg-field input, .lg-card { transition: none !important; } }
+
+  /* =====================================================================
+     DESKTOP (>= 900px): tata letak dua kolom (split-screen)
+     Kiri  : panel bermerek (logo, judul, deskripsi) di atas gambar daun
+     Kanan : panel putih berlengkung berisi formulir masuk
+     Di bawah 900px semua aturan ini tidak berlaku (tampilan HP tetap seperti semula).
+     ===================================================================== */
+  .lg-info { display: none; }
+  @keyframes lgUp   { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+  @keyframes lgFade { from { opacity: 0; } to { opacity: 1; } }
+
+  @media (min-width: 900px) {
+    :root { --hj-tua: #114e2e; --hj-judul: #114e2e; --hj-teks: #167a4a; --hj-redup: #6b7280; --hj-isian: #e6eee9; --hj-hover: #167a4a; }
+    body.login-page { font-family: 'Poppins', 'Montserrat', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; padding: 0; background: #114e2e; align-items: stretch; }
+
+    .lg-card {
+      position: relative; margin: 0; max-width: none; width: 100%; flex-direction: row;
+      min-height: 100vh; border-radius: 0; box-shadow: none; background: #114e2e; overflow: hidden;
+    }
+
+    /* ---- panel kiri: menutup seluruh kartu; lengkung panel kanan "membuka" gambar ini ---- */
+    .lg-hero {
+      position: absolute; inset: 0; height: auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 40px max(40%, 440px) 40px 40px; color: #fff; background: #0b3a27;
+    }
+    .lg-hero::before { content: ''; position: absolute; z-index: 1; top: -10%; left: -10%; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 70%); pointer-events: none; }
+    .lg-hero::after  { content: ''; position: absolute; z-index: 1; inset: 0; background: linear-gradient(135deg, rgba(17,78,46,.58), rgba(13,56,33,.8)); pointer-events: none; }
+
+    .lg-back { z-index: 3; top: 40px; left: 40px; width: 45px; height: 45px; font-size: 18px; color: #114e2e; box-shadow: 0 4px 15px rgba(0,0,0,.2); transition: transform .3s, background-color .3s; }
+    .lg-back:hover { color: #114e2e; background: #f3f4f6; transform: translateX(-5px); }
+
+    .lg-logo { position: relative; z-index: 2; inset: auto; display: flex; margin-bottom: 25px; }
+    .lg-logo img { width: 120px; height: 120px; filter: drop-shadow(0 10px 15px rgba(0,0,0,.3)); }
+    .lg-logo i { font-size: 96px; filter: drop-shadow(0 10px 15px rgba(0,0,0,.3)); }
+
+    .lg-info { display: block; position: relative; z-index: 2; max-width: 400px; text-align: center; animation: lgFade 1s ease-out both; }
+    .lg-info h2 { margin: 0 0 15px; font-size: 28px; font-weight: 700; letter-spacing: .5px; color: #fff; }
+    .lg-info p { margin: 0 0 30px; font-size: 15px; line-height: 1.6; color: #d1d5db; }
+    .lg-garis { width: 60px; height: 4px; margin: 0 auto; border-radius: 2px; background: #facc15; }
+
+    /* ---- panel kanan: formulir ---- */
+    .lg-body {
+      position: relative; z-index: 2; flex: none; width: 40%; min-width: 440px; min-height: 100vh; margin: 0 0 0 auto;
+      padding: 60px clamp(32px, 4.5vw, 80px); border-top-left-radius: 60px; justify-content: center; align-items: center;
+      box-shadow: -10px 0 30px rgba(0,0,0,.1);
+    }
+    .lg-body > * { width: 100%; max-width: 420px; }
+    .lg-judul { text-align: left; font-size: 38px; font-weight: 700; letter-spacing: 0; line-height: 1.2; margin-bottom: 5px; }
+    .lg-sub { text-align: left; margin: 0; font-size: 15px; font-weight: 500; }
+    .lg-form { flex: none; margin-top: 35px; }
+    .lg-err, .lg-ok { padding: 12px 18px; font-size: 13.5px; border-radius: 18px; }
+
+    .lg-field { margin-bottom: 20px; }
+    .lg-field input { height: 58px; padding: 0 25px; font-family: inherit; font-size: 15px; font-weight: 600; }
+    .lg-field input::placeholder { color: #55876c; }
+    .lg-field.pw input { padding-right: 62px; }
+    .lg-field input:focus { box-shadow: 0 0 0 4px rgba(22,122,74,.1); }
+    .lg-eye { right: 18px; width: 40px; height: 40px; font-size: 18px; }
+
+    .lg-ruang { flex: none; min-height: 0; height: 15px; }
+    .lg-btn { height: 58px; font-family: inherit; font-size: 16px; font-weight: 700; box-shadow: 0 10px 20px rgba(17,78,46,.2); transition: all .3s ease; }
+    .lg-btn:hover { background: var(--hj-hover); transform: translateY(-2px); box-shadow: 0 12px 25px rgba(17,78,46,.3); }
+
+    .lg-kaki { margin-top: 50px; font-size: 14px; font-weight: 400; }
+    .lg-kaki a { color: #114e2e; font-weight: 700; transition: color .2s; }
+    .lg-kaki a:hover { color: var(--hj-hover); text-decoration: none; }
+    .lg-hak { margin-top: 15px; font-size: 12px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: #9ca3af; opacity: 1; }
+
+    /* animasi masuk berurutan */
+    .lg-a { animation: lgUp .6s both; }
+    .lg-a1 { animation-delay: .1s; } .lg-a2 { animation-delay: .2s; } .lg-a3 { animation-delay: .3s; } .lg-a4 { animation-delay: .4s; }
+  }
+  /* layar desktop pendek: judul sedikit dirampingkan agar formulir tetap muat tanpa menggulir */
+  @media (min-width: 900px) and (max-height: 640px) {
+    .lg-body { padding-top: 32px; padding-bottom: 32px; }
+    .lg-judul { font-size: 32px; } .lg-form { margin-top: 24px; } .lg-kaki { margin-top: 28px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .lg-a, .lg-info { animation: none !important; } }
 </style>
 </head>
 <body class="login-page">
@@ -217,32 +333,45 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
         <use href="#lgDaun" fill="url(#lgDaunC)" transform="translate(-10 -10) rotate(30) scale(.8)" opacity=".9"/>
         <rect width="380" height="232" fill="url(#lgSorot)"/>
       </svg>
-      <a href="index.php" class="lg-back" id="btnKembali" title="Kembali" aria-label="Kembali"><i class="bi bi-chevron-left"></i></a>
+      <a href="<?= BASE_URL ?>/" class="lg-back" id="btnKembali" title="Kembali" aria-label="Kembali"><i class="bi bi-chevron-left"></i></a>
       <div class="lg-logo"><?php if ($logoUrl): ?><img src="<?= e($logoUrl) ?>" alt="Logo <?= e($namaSekolah) ?>"><?php else: ?><i class="bi bi-qr-code-scan" aria-hidden="true"></i><?php endif; ?></div>
+
+      <!-- Hanya tampil di desktop (>= 900px) -->
+      <div class="lg-info">
+        <h2>Portal Absensi Digital</h2>
+        <p>Sistem Informasi Terpadu <?= e($namaSekolah) ?>. Tingkatkan kedisiplinan dan semangat belajar melalui pemantauan kehadiran yang akurat secara real&#8209;time.</p>
+        <div class="lg-garis"></div>
+      </div>
     </div>
 
     <div class="lg-body">
-      <h1 class="lg-judul">Selamat Datang</h1>
-      <p class="lg-sub">Masuk ke akun Absensi Anda</p>
+      <h1 class="lg-judul lg-a lg-a1">Selamat Datang</h1>
+      <p class="lg-sub lg-a lg-a1">Masuk ke akun Absensi Anda</p>
 
       <form method="post" autocomplete="off" class="lg-form">
         <?= csrf_field() ?>
         <?php if ($error): ?>
           <div class="lg-err" role="alert"><i class="bi bi-exclamation-circle-fill"></i><span><?= e($error) ?></span></div>
+        <?php elseif ($info): ?>
+          <div class="lg-ok" role="status"><i class="bi bi-check-circle-fill"></i><span><?= e($info) ?></span></div>
         <?php endif; ?>
-        <div class="lg-field">
-          <input type="text" name="username" id="username" placeholder="Username" aria-label="Username" required autocapitalize="none" spellcheck="false">
+        <?php if (!portal_aktif()): ?>
+          <div class="lg-ok netral" role="note"><i class="bi bi-info-circle-fill"></i><span>Portal siswa sedang ditutup sementara. Petugas tetap dapat masuk.</span></div>
+        <?php endif; ?>
+        <div class="lg-field lg-a lg-a2">
+          <input type="text" name="username" id="username" placeholder="Username / NISN" aria-label="Username atau NISN" autocomplete="username" required autocapitalize="none" spellcheck="false">
         </div>
-        <div class="lg-field pw">
+        <div class="lg-field pw lg-a lg-a3">
           <input type="password" name="password" id="password" placeholder="Password" aria-label="Password" required>
           <button type="button" class="lg-eye" id="togglePw" aria-label="Tampilkan password"><i class="bi bi-eye-slash-fill"></i></button>
         </div>
         <div class="lg-ruang"></div>
-        <button type="submit" class="lg-btn" id="btnMasuk">Masuk</button>
+        <button type="submit" class="lg-btn lg-a lg-a4" id="btnMasuk">Masuk</button>
       </form>
 
-      <p class="lg-kaki">
-        Bukan petugas? <a href="index.php">Kembali ke beranda</a>
+      <p class="lg-kaki lg-a lg-a4">
+        Siswa belum punya password? <a href="<?= e(portal_url('aktivasi')) ?>">Aktivasi akun</a><br>
+        <a href="<?= BASE_URL ?>/">Kembali ke beranda</a>
         <span class="lg-hak"><?= e($namaSekolah) ?> · SIAP ABSEN &copy; <?= date('Y') ?></span>
       </p>
     </div>

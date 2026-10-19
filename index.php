@@ -12,6 +12,17 @@ define('APP_ROUTER', true);
 // Tahan seluruh output sampai halaman selesai, supaya header()/redirect di
 // halaman admin tetap bisa dipanggil walau header.php sudah menulis HTML.
 ob_start();
+
+// Portal siswa (/portal/...) memakai sesi & halaman TERPISAH dari admin, jadi dialihkan
+// SEBELUM auth.php dimuat (auth.php memulai sesi admin).
+require_once __DIR__ . '/config/database.php';
+$pathPortal = path_permintaan();
+if ($pathPortal === 'portal' || strpos($pathPortal, 'portal/') === 0) {
+    require __DIR__ . '/portal_siswa/router.php';
+    if (ob_get_level() > 0) ob_end_flush();
+    exit;
+}
+
 require_once __DIR__ . '/includes/auth.php';
 
 /** Path permintaan relatif terhadap BASE_URL, tanpa slash di tepi, belum di-decode. */
@@ -57,6 +68,7 @@ if ($modulLama !== '') {
             [$modul, $rp] = $cocok;
             define('ROUTE_BERSIH', true);
             $nisUrl = $rp['nis'] ?? null;
+            if (isset($rp['id'])) { $_GET['id'] = $rp['id']; $_REQUEST['id'] = $rp['id']; }
         } else {
             $modul = '__tidak_ada__';            // belum login -> diarahkan ke login di bawah
         }

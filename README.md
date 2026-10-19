@@ -32,6 +32,7 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
   melihat nama yang disamarkan ("Abhista K. A."); perangkat terdaftar melihat data
   kelasnya sendiri.
 - Presensi, konfirmasi, dan pendaftaran perangkat (`/presensi/`).
+- **Portal Siswa** (`/portal`): siswa masuk dengan NISN lewat halaman login yang sama dengan petugas, untuk melihat kehadiran sendiri, **mengajukan izin/sakit**, dan menerima notifikasi keputusan petugas.
 
 **Panel admin / operator**
 - Dashboard, Papan Kehadiran Langsung (`papan`), Data Siswa (detail, tambah, ubah, hapus, import Excel/CSV).
@@ -39,6 +40,8 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 - QR Siswa, QR Kelas, QR Gerbang (lihat, cetak, regenerate).
 - Presensi harian (ekspor & cetak), Rekap bulanan (cetak).
 - Manajemen Perangkat, Kode/QR Pasangan, Kode Pasangan Massal, Reset Massal.
+- **Akun Siswa**: menerbitkan kode aktivasi, reset, dan blokir akun portal siswa (lihat bagian 8b).
+- **Pengajuan Izin**: antrean persetujuan izin/sakit siswa untuk petugas piket (lihat bagian 8c).
 - Log Keamanan, Log Aktivitas, Log Cetak.
 - Pengaturan, Pengguna, dan **Hak Akses per role** (`admin` = semua izin;
   `operator` diatur lewat menu Hak Akses).
@@ -52,6 +55,7 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 ├── beranda.php, login.php, logout.php
 ├── config/database.php
 ├── panel/               → halaman panel admin & operator
+├── portal_siswa/        → halaman portal siswa (aktivasi, beranda, izin, notifikasi, password); hanya lewat router
 ├── presensi/            → halaman publik siswa (scan, konfirmasi, daftar_hp, berhasil)
 ├── api/                 → endpoint JSON: scan, presensi, pasangan, cek_perangkat, beranda
 ├── includes/            → auth, functions, device_binding, presensi_core, qr_dinamis,
@@ -60,7 +64,7 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 ├── database/            → database.sql + file migrasi
 ├── uploads/             → foto siswa (PHP dinonaktifkan di folder ini)
 ├── .well-known/assetlinks.json   → verifikasi aplikasi Android
-└── 403.html, 404.html, 502.html
+└── 403.html, 404.html, 502.html, 503.html (gangguan database)
 ```
 
 ---
@@ -131,6 +135,9 @@ Semua dilayani `index.php` (front controller) lewat aturan di `.htaccess`.
 | QR | `/qr/siswa` · `/qr/siswa/cetak` · `/qr/kelas` · `/qr/kelas/cetak` · `/qr/gerbang` |
 | Log | `/log/keamanan` · `/log/aktivitas` · `/log/cetak` |
 | Pengaturan | `/pengaturan` |
+| Akun siswa (admin) | `/akun-siswa` |
+| Pengajuan izin (petugas) | `/izin` · tinjau `/izin/{id}` · lampiran `/izin/{id}/lampiran` |
+| Portal siswa | `/portal` · `/portal/aktivasi` · `/portal/password` · `/portal/izin` · `/portal/izin/baru` · `/portal/izin/{id}` · `/portal/notifikasi` (masuk lewat `/login`, lihat bagian 8b) |
 | Pengguna & hak akses | `/pengguna` · `/pengguna/hak-akses` · profil `/profil` |
 | Beranda publik, login | `/` · `/login` |
 | Presensi siswa (publik) | `/presensi/` (tidak berubah, QR kartu siswa tetap berlaku) |
@@ -198,6 +205,91 @@ lebih kuat, gabungkan dengan QR dinamis gerbang, GPS/geofencing, dan validasi IP
 
 ---
 
+## 8b. PORTAL SISWA (AKUN & KODE AKTIVASI)
+
+Siswa dapat memiliki akun sendiri di `/portal` (username = **NISN**). Halaman masuknya **hanya satu**, yaitu
+`/login` (kolom *Username / NISN*): sistem membedakan sendiri. Bila ada petugas dengan username itu, ia masuk sebagai
+petugas; bila tidak, input dianggap NISN siswa dan diarahkan ke `/portal` (sesi terpisah). Bila username petugas
+kebetulan sama dengan sebuah NISN, **petugas yang menang**, jadi hindari username petugas berupa angka.
+Siswa **tidak mendaftar sendiri** dan
+**admin tidak pernah membuat/mengetahui password**:
+
+1. Admin membuka **Akun Siswa** → *Buat kode* (satuan, dicentang, atau seluruh kelas/sekolah).
+2. Sistem menampilkan **kode aktivasi 8 karakter** (mis. `K7M2-9QXA`) **sekali saja** — cetak kartunya atau unduh CSV.
+   Yang tersimpan di database hanya hash (PBKDF2 + garam); kode berlaku **7 hari** dan hanya untuk satu siswa.
+3. Siswa membuka `/portal/aktivasi`, mengisi NISN + kode, lalu **membuat password sendiri**
+   (minimal 8 karakter, huruf + angka, tidak boleh sama dengan NISN/NIS atau password umum).
+4. Lupa password / akun diambil alih → admin menekan **Reset**: password lama dihapus, semua sesi berhenti,
+   siswa aktivasi ulang dengan kode baru.
+
+**Pemisahan dari admin**
+- Sesi sendiri (cookie `SIAP_SISWA`, path `/portal`); cookie admin tidak dibaca portal dan sebaliknya.
+- Tabel sendiri (`siswa_akun`), bukan tabel `users` → tidak ada jalan naik ke panel admin.
+- Pembatas percobaan sendiri (`portal_attempts`) agar kegagalan siswa di Wi-Fi sekolah tidak mengunci login admin.
+
+**Keamanan yang diterapkan**
+- Gagal login dibatasi per NISN (5x / 15 menit) dan per IP (100x); salah kode aktivasi 5x mengunci 15 menit.
+- Pesan galat sengaja umum, dan pesan serta waktu respons jalur petugas, siswa, dan username tak dikenal disamakan
+  (terukur ±380 ms semua), supaya username petugas maupun NISN yang punya akun tidak bisa ditebak.
+- Login siswa **bukan pengganti Device Binding**: presensi tetap lewat perangkat terdaftar.
+- Akun otomatis tidak bisa dipakai bila siswa dinonaktifkan atau diblokir; sesi lama langsung berakhir.
+- Mengganti password mengeluarkan perangkat lain. Keluar hanya lewat POST + token CSRF.
+- Siswa **tanpa NISN atau dengan NISN ganda** tidak bisa dibuatkan akun (ditandai di daftar).
+- Admin dapat menutup seluruh portal sementara lewat tombol *Tutup portal*.
+
+**Izin (menu Hak Akses):** `akun_siswa.lihat` (melihat daftar) dan `akun_siswa.kelola` (menerbitkan kode, reset,
+blokir, buka/tutup portal). Izin ini **tidak** diberikan otomatis ke Operator; berikan lewat Hak Akses.
+
+Alamat lama `/portal/masuk` otomatis dialihkan ke `/login`. File `portal_siswa/masuk.php` dari versi sebelumnya sudah tidak dipakai dan boleh dihapus.
+
+**Instalasi:** tabel dibuat otomatis saat pertama dipakai. Bila akun database tidak punya hak `CREATE`,
+jalankan `database/migration_akun_siswa.sql` sekali.
+
+**Batas yang perlu diketahui:** sesi PHP berakhir sesuai `session.gc_maxlifetime` server (biasanya ±24 menit tanpa
+aktivitas), jadi siswa bisa diminta masuk ulang; dan penguncian per NISN berarti orang lain bisa membuat satu siswa
+terkunci sementara dengan menebak password berulang (pemulihannya otomatis setelah 15 menit).
+
+---
+
+## 8c. PENGAJUAN IZIN / SAKIT & NOTIFIKASI
+
+**Alur:** siswa mengajukan di `/portal/izin/baru` → petugas piket memutuskan di `/izin` → siswa mendapat
+notifikasi di portal. Izin yang **disetujui** ditulis ke tabel `presensi` (status `IZIN`/`SAKIT`, metode
+`PENGAJUAN`, tanpa jam masuk) untuk **hari efektif** dalam rentang, sehingga Data Presensi, Rekap, Dashboard, dan
+ekspor yang sudah ada otomatis ikut tanpa diubah.
+
+**Aturan pengajuan** (konstanta di `includes/izin.php`): mundur maksimal 3 hari, maju maksimal 30 hari; satu pengajuan
+maksimal 14 hari; **sakit lebih dari 1 hari sekolah wajib melampirkan surat** (JPG/PNG/WEBP/PDF, maks. 3 MB); satu
+pengajuan aktif per tanggal; maksimal 5 pengajuan menunggu sekaligus; siswa boleh membatalkan selama masih menunggu.
+
+**Keputusan petugas:** *Setujui* (catatan opsional), *Tolak* (alasan **wajib**, dibaca siswa), *Cabut persetujuan*
+(alasan wajib; hanya baris presensi `PENGAJUAN` yang dihapus, presensi kehadiran asli tidak pernah disentuh), dan
+*Setujui yang dicentang* untuk persetujuan massal. Semuanya tercatat di Log Aktivitas.
+
+**Bila siswa yang izinnya disetujui tetap hadir:** presensi QR tetap diterima dan **HADIR yang berlaku**, baris izin
+hari itu diganti, dan izin hari itu ditandai `dipakai_hadir`.
+
+**Notifikasi:** siswa melihat lencana di menu **Notifikasi** dan banner di beranda (disetujui/ditolak/dicabut);
+petugas melihat lencana jumlah di menu **Pengajuan Izin** dan pengingat di Dashboard. Notifikasi di dalam portal saja;
+belum ada WhatsApp/email. Maksimal 100 notifikasi terbaru per siswa disimpan.
+
+**Izin akses (Hak Akses):** `izin.lihat` (melihat pengajuan & lampiran) dan `izin.proses` (setujui/tolak/cabut,
+hapus lampiran lama). **Tidak diberikan otomatis ke Operator**, jadi centang untuk petugas piket di menu Hak Akses.
+
+**Lampiran = data kesehatan.** Disimpan di `uploads/izin/` dengan nama acak, **tidak bisa dibuka langsung dari web**
+(`.htaccess` menolak; pada **Nginx** tambahkan `location ^~ /uploads/izin/ { deny all; }`), hanya lewat skrip yang
+memeriksa hak akses: pemilik pengajuan dan petugas ber-izin `izin.lihat`. PDF dikirim sebagai unduhan, gambar
+dengan `nosniff` + CSP. Setiap pembukaan lampiran oleh petugas dicatat di **Log Keamanan**
+(`IZIN_LAMPIRAN_DILIHAT`). Tombol **Hapus lampiran lama** (halaman Pengajuan Izin) menghapus berkas dari
+pengajuan yang sudah diproses lebih dari N hari (bawaan 90) — data pengajuannya tetap ada. Tentukan kebijakan
+retensi bersama pihak madrasah.
+
+**Instalasi:** tabel `izin_pengajuan`, `izin_hari`, `portal_notifikasi` dibuat otomatis saat pertama dipakai; bila
+akun database tidak punya hak `CREATE`, jalankan `database/migration_izin.sql`. Pastikan `upload_max_filesize` dan
+`post_max_size` minimal `4M` dan folder `uploads/` dapat ditulis server web.
+
+---
+
 ## 9. LIBRARY QR CODE — DI-BUNDLE LOKAL
 
 `qrcode.js` (generate) dan `html5-qrcode.min.js` (scan kamera) sudah ada di
@@ -226,4 +318,10 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
 - Semua validasi krusial (token QR, device binding, jam, presensi ganda, geofence) dilakukan
   **di server**. Jam & tanggal presensi selalu dari waktu server.
 - Hapus siswa hanya lewat POST + token CSRF.
+- **Halaman gangguan database (503):** bila koneksi database gagal, pengguna melihat halaman rapi
+  `503.html` (bukan teks polos), dengan tombol "Coba Lagi" dan percobaan ulang otomatis tiap 30 detik.
+  Detail galat **tidak** ditampilkan; hanya *kode kejadian* acak (mis. `DB-8D9316`) yang muncul di halaman
+  dan **ditulis juga ke error log server**, sehingga laporan pengguna bisa dicocokkan dengan lognya.
+  Permintaan API / AJAX dijawab JSON (`{"success":false,"code":"DB_UNAVAILABLE",...}`), dan popup formulir
+  hanya menampilkan pesan singkat. Logikanya ada di `tampilkan_error_database()` di `config/database.php`.
 - Ganti password `admin` bawaan dan password database sebelum dipakai produksi.

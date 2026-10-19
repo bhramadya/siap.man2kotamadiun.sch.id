@@ -333,7 +333,7 @@ $logoUrl = ($logo !== '' && is_file(__DIR__ . '/uploads/siswa/' . $logo)) ? BASE
     if (modeKelas && d.saya) {
       cs.style.display = '';
       cs.className = 'chip ' + (d.saya.status ? (d.saya.status === 'TERLAMBAT' ? 'warn' : 'ok') : '');
-      cs.textContent = d.saya.nama + ' · ' + (d.saya.status ? 'sudah presensi ' + d.saya.jam + (d.saya.status === 'TERLAMBAT' ? ' (terlambat)' : '') : 'belum presensi hari ini');
+      cs.textContent = d.saya.nama + ' · ' + (d.saya.status ? 'sudah presensi ' + d.saya.jam + (d.saya.status === 'TERLAMBAT' ? ' (terlambat)' : '') : (d.saya.izin ? (d.saya.izin === 'SAKIT' ? 'sakit' : 'izin') + ' disetujui hari ini' : 'belum presensi hari ini'));
     } else { cs.style.display = 'none'; }
     [['Tepat', d.tepat], ['Terlambat', d.terlambat], ['Tidak', d.tidak_hadir], ['Belum', d.belum]].forEach(function (r) {
       $('n' + r[0]).textContent = r[1]; $('p' + r[0]).textContent = pct(r[1], d.total) + '%';
