@@ -17,6 +17,8 @@ jalankan_pembersihan_log_otomatis();
  */
 $menuGroups = [
     'dashboard.php'     => ['dashboard.php'],
+    'akun_siswa.php'     => ['akun_siswa.php'],
+    'izin.php'           => ['izin.php', 'izin_detail.php', 'izin_lampiran.php'],
     'siswa.php'          => ['siswa.php', 'siswa_detail.php', 'siswa_tambah.php', 'siswa_edit.php', 'siswa_hapus.php', 'siswa_import.php'],
     'master_kelas.php'   => ['master_kelas.php'],
     'kenaikan_kelas.php' => ['kenaikan_kelas.php'],
@@ -66,10 +68,11 @@ function is_menu_active(string $menuKey, array $groups, string $current): bool
       <?php if (can_modul('dashboard')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('dashboard.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('dashboard') ?>"><i><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1.15em" height="1.15em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1.8"/><rect width="7" height="5" x="14" y="3" rx="1.8"/><rect width="7" height="9" x="14" y="12" rx="1.8"/><rect width="7" height="5" x="3" y="16" rx="1.8"/></svg></i> Dashboard</a></li><?php endif; ?>
     </ul>
 
-<?php if (can_any_modul(['siswa', 'master_kelas', 'kenaikan_kelas'])): ?>
+<?php if (can_any_modul(['siswa', 'akun_siswa', 'master_kelas', 'kenaikan_kelas'])): ?>
     <div class="sidebar-section-title">Data &amp; Kelas</div>
     <ul class="nav flex-column">
       <?php if (can_modul('siswa')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('siswa.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('siswa') ?>"><i class="bi bi-people"></i> Data Siswa</a></li><?php endif; ?>
+      <?php if (can_modul('akun_siswa')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('akun_siswa.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('akun_siswa') ?>"><i class="bi bi-person-lock"></i> Akun Siswa</a></li><?php endif; ?>
       <?php if (can_modul('master_kelas')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('master_kelas.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('master_kelas') ?>"><i class="bi bi-tags"></i> Master Kelas</a></li><?php endif; ?>
       <?php if (can_modul('kenaikan_kelas')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('kenaikan_kelas.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('kenaikan_kelas') ?>"><i class="bi bi-arrow-up-square"></i> Kenaikan Kelas</a></li><?php endif; ?>
     </ul>
@@ -84,12 +87,13 @@ function is_menu_active(string $menuKey, array $groups, string $current): bool
     </ul>
     <?php endif; ?>
 
-<?php if (can_any_modul(['presensi', 'papan', 'rekap'])): ?>
+<?php if (can_any_modul(['presensi', 'papan', 'rekap', 'izin'])): ?>
     <div class="sidebar-section-title">Presensi</div>
     <ul class="nav flex-column">
       <?php if (can_modul('presensi')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('presensi.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('presensi') ?>"><i class="bi bi-calendar-check"></i> Data Presensi</a></li><?php endif; ?>
       <?php if (can_modul('papan')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('papan.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('papan') ?>"><i class="bi bi-broadcast"></i> Papan Langsung</a></li><?php endif; ?>
       <?php if (can_modul('rekap')): ?><li class="nav-item"><a class="nav-link <?= is_menu_active('rekap.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('rekap') ?>"><i class="bi bi-bar-chart"></i> Rekap Kehadiran</a></li><?php endif; ?>
+      <?php if (can_modul('izin')): require_once __DIR__ . '/izin.php'; $nIzin = izin_menunggu_jumlah(); ?><li class="nav-item"><a class="nav-link <?= is_menu_active('izin.php', $menuGroups, $current)?'active':'' ?>" href="<?= modul_url('izin') ?>"><i class="bi bi-envelope-paper"></i> Pengajuan Izin<?php if ($nIzin > 0): ?> <span class="badge rounded-pill bg-warning text-dark ms-1" title="Menunggu persetujuan"><?= $nIzin > 99 ? '99+' : $nIzin ?></span><?php endif; ?></a></li><?php endif; ?>
     </ul>
     <?php endif; ?>
 

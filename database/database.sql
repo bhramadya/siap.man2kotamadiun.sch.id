@@ -110,8 +110,7 @@ CREATE TABLE `settings` (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `hari_efektif` varchar(20) NOT NULL DEFAULT '1,2,3,4,5',
   `alamat_sekolah` text,
-  `nama_kepala` varchar(150) DEFAULT NULL,
-  `portal_siswa_aktif` tinyint(1) NOT NULL DEFAULT 1
+  `nama_kepala` varchar(150) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `siswa` (
@@ -153,7 +152,6 @@ ALTER TABLE `device_bindings`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_siswa_device` (`siswa_id`),
   ADD UNIQUE KEY `uniq_device_hash` (`device_hash`),
-  ADD KEY `idx_device_uuid` (`device_uuid`),
   ADD KEY `fk_device_reset_by` (`reset_by`),
   ADD KEY `idx_device_status` (`status`);
 
@@ -258,93 +256,5 @@ INSERT INTO `settings`
 VALUES
   ('SMA Negeri 1 Contoh', '2026/2027', '07:00:00', '07:15:00',
    -7.1234567, 111.1234567, 100, 0);
-
--- ---------------------------------------------------------------------
--- PORTAL SISWA: akun siswa (username = NISN) & pembatas percobaan login.
--- TERPISAH dari tabel `users` (admin). Siswa tidak membuat akun sendiri: admin
--- menerbitkan kode aktivasi sekali pakai, siswa menetapkan password sendiri.
--- ---------------------------------------------------------------------
-CREATE TABLE `siswa_akun` (
-  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
-  `siswa_id` int UNSIGNED NOT NULL,
-  `password_hash` varchar(255) DEFAULT NULL,
-  `status` enum('menunggu','aktif','nonaktif') NOT NULL DEFAULT 'menunggu',
-  `kode_hash` varchar(128) DEFAULT NULL,
-  `kode_salt` varchar(32) DEFAULT NULL,
-  `kode_berlaku_hingga` datetime DEFAULT NULL,
-  `kode_salah` int UNSIGNED NOT NULL DEFAULT 0,
-  `kode_terkunci_hingga` datetime DEFAULT NULL,
-  `sesi_versi` int UNSIGNED NOT NULL DEFAULT 1,
-  `dibuat_oleh` int UNSIGNED DEFAULT NULL,
-  `login_terakhir` datetime DEFAULT NULL,
-  `password_diubah` datetime DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_akun_siswa` (`siswa_id`),
-  CONSTRAINT `fk_akun_siswa` FOREIGN KEY (`siswa_id`) REFERENCES `siswa` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE `portal_attempts` (
-  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,
-  `kunci` varchar(60) NOT NULL,
-  `ip_address` varchar(45) NOT NULL,
-  `created_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_pa_kunci` (`kunci`, `created_at`),
-  KEY `idx_pa_ip` (`ip_address`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ---------------------------------------------------------------------
--- PENGAJUAN IZIN/SAKIT + NOTIFIKASI PORTAL SISWA.
--- Izin yang disetujui ditulis ke tabel `presensi` (metode 'PENGAJUAN'); izin_hari mencatat
--- tanggal mana yang ditulis agar bisa dicabut dengan aman.
--- ---------------------------------------------------------------------
-CREATE TABLE izin_pengajuan (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  siswa_id INT UNSIGNED NOT NULL,
-  jenis ENUM('izin','sakit') NOT NULL,
-  tanggal_mulai DATE NOT NULL,
-  tanggal_selesai DATE NOT NULL,
-  alasan VARCHAR(500) NOT NULL,
-  lampiran VARCHAR(80) NULL,
-  lampiran_nama VARCHAR(120) NULL,
-  lampiran_tipe VARCHAR(40) NULL,
-  lampiran_dihapus_at DATETIME NULL,
-  status ENUM('menunggu','disetujui','ditolak','dibatalkan','dicabut') NOT NULL DEFAULT 'menunggu',
-  diajukan_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  diproses_oleh INT UNSIGNED NULL,
-  diproses_nama VARCHAR(100) NULL,
-  diproses_at DATETIME NULL,
-  catatan_petugas VARCHAR(300) NULL,
-  hari_diterapkan SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_iz_status (status, diajukan_at),
-  KEY idx_iz_siswa (siswa_id, tanggal_mulai),
-  KEY idx_iz_tanggal (tanggal_mulai, tanggal_selesai),
-  CONSTRAINT fk_izin_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE izin_hari (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  pengajuan_id INT UNSIGNED NOT NULL,
-  tanggal DATE NOT NULL,
-  hasil ENUM('diterapkan','sudah_ada','dipakai_hadir','dicabut') NOT NULL,
-  UNIQUE KEY uniq_izin_hari (pengajuan_id, tanggal),
-  CONSTRAINT fk_izin_hari FOREIGN KEY (pengajuan_id) REFERENCES izin_pengajuan (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE portal_notifikasi (
-  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  siswa_id INT UNSIGNED NOT NULL,
-  jenis VARCHAR(30) NOT NULL,
-  judul VARCHAR(120) NOT NULL,
-  isi VARCHAR(400) NOT NULL,
-  tautan VARCHAR(120) NULL,
-  dibaca_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_notif_siswa (siswa_id, dibaca_at, id),
-  CONSTRAINT fk_notif_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
