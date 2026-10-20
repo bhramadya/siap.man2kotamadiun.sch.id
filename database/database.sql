@@ -38,6 +38,8 @@ CREATE TABLE `device_bindings` (
   `device_hash` varchar(64) NOT NULL COMMENT 'sha256 dari device identifier',
   `secret_hash` char(64) DEFAULT NULL COMMENT 'sha256 dari rahasia perangkat yang diterbitkan server (cookie HttpOnly SIAP_PERANGKAT)',
   `secret_aktif_at` datetime DEFAULT NULL COMMENT 'NULL = rahasia menunggu konfirmasi (UUID masih diterima); terisi = hanya cookie',
+  `secret_terbit_at` datetime DEFAULT NULL COMMENT 'kapan rahasia terakhir diterbitkan',
+  `secret_terbit_oleh` varchar(10) DEFAULT NULL COMMENT 'daftar / checkin / pasif; hanya checkin hari sebelumnya yang bisa diaktifkan',
   `device_name` varchar(100) DEFAULT NULL,
   `browser` varchar(100) DEFAULT NULL,
   `os` varchar(100) DEFAULT NULL,

@@ -259,8 +259,12 @@ halaman internal.
      milik perangkat lain. Presensi yang **ditolak tidak pernah** mengganti kunci. Status binding: *menunggu*
      (UUID **dan** cookie masih diterima, jadi HP asli tidak terkunci bila orang lain sempat mengambil cookie lewat
      beranda, atau bila WebView kehilangan cookie).
-  3. Begitu cookie baru dipakai dalam **presensi yang berhasil**, status menjadi *aktif* dan UUID saja tidak
-     diterima lagi.
+  3. Status menjadi *aktif* (UUID saja tidak diterima lagi) hanya bila cookie dipakai dalam **presensi yang berhasil**
+     **dan** cookie itu diterbitkan oleh presensi berhasil pada **hari sebelumnya** (`secret_terbit_at`,
+     `secret_terbit_oleh`). Cookie dari beranda/cek perangkat (*pasif*) tidak pernah langsung diaktifkan: presensi
+     berhasil dengan cookie itu hanya menggantinya dengan cookie baru bertanda *checkin*. Jadi orang yang menyalin UUID
+     tidak bisa mengambil alih perangkat dalam satu sesi; ia perlu presensi berhasil pada dua hari berbeda tanpa HP asli
+     presensi di antaranya. Biasanya HP asli menjadi *aktif* pada presensi hari berikutnya.
   - **Batas masa transisi (opsional):** Pengaturan → *Batas pengenalan perangkat lama* (`settings.device_legacy_until`).
     Kosong (bawaan) = tanpa batas. Bila diisi dan tanggalnya lewat, perangkat yang belum *aktif* tidak dikenali lagi
     dari UUID dan harus direset admin. Tanggalnya ditentukan sekolah; jumlah perangkat yang belum termigrasi tampil

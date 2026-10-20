@@ -56,6 +56,16 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 UPDATE device_bindings SET secret_aktif_at = COALESCE(registered_at, NOW())
   WHERE @perlu_aktif = 1 AND secret_hash IS NOT NULL;
 
+-- 5b) device_bindings.secret_terbit_at / secret_terbit_oleh: kapan dan oleh apa rahasia terakhir diterbitkan
+--     ('daftar', 'checkin', 'pasif'). Rahasia MENUNGGU hanya bisa menjadi AKTIF bila diterbitkan presensi berhasil
+--     pada hari sebelumnya; baris lama berisi NULL (= belum bisa diaktifkan, diganti pada presensi berikutnya).
+SET @sql := (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE device_bindings ADD COLUMN secret_terbit_at DATETIME NULL DEFAULT NULL AFTER secret_aktif_at, ADD COLUMN secret_terbit_oleh VARCHAR(10) NULL DEFAULT NULL AFTER secret_terbit_at',
+    'SELECT 1')
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_bindings' AND COLUMN_NAME = 'secret_terbit_oleh');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 -- 6) settings.device_legacy_until: batas tanggal pengenalan perangkat lama lewat UUID saja (opsional).
 --    Dibiarkan KOSONG (tanpa batas); sekolah menentukan sendiri tanggalnya di Pengaturan.
 SET @sql := (SELECT IF(COUNT(*) = 0,
