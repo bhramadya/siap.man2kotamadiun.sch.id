@@ -54,6 +54,8 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 ├── index.php            → router URL bersih (/siswa, /absensi, ...) + beranda publik
 ├── beranda.php, login.php, logout.php
 ├── config/database.php
+├── config/production.php.example → contoh override BASE_URL untuk server produksi
+├── tools/ngrok-siap.ps1         → buka/tutup tunnel ngrok untuk uji dari HP (bagian 4b)
 ├── panel/               → halaman panel admin & operator
 ├── portal_siswa/        → halaman portal siswa (aktivasi, beranda, izin, notifikasi, password); hanya lewat router
 ├── presensi/            → halaman publik siswa (scan, konfirmasi, daftar_hp, berhasil)
@@ -82,12 +84,90 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
    define('DB_NAME', 'siapabsen');
    define('DB_USER', 'root');
    define('DB_PASS', '');
-   define('BASE_URL', 'http://localhost/siap');
    ```
+   `BASE_URL` **tidak perlu ditulis manual** — aplikasi menentukannya sendiri dari
+   request (lihat bagian 4b). Kalau aplikasi dipasang di dalam subfolder, isi
+   `define('BASE_PATH', '/siap');` (default-nya sudah otomatis dideteksi).
 6. Buka `http://localhost/siap/login.php` dan login dengan akun default (bagian 7).
 
 **Kamera & lokasi:** browser mengizinkan kamera/GPS di `http://localhost`. Untuk uji
-dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan HTTPS.
+dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan HTTPS
+→ lihat **bagian 4b**.
+
+---
+
+## 4b. UJI DARI HP / APLIKASI ANDROID (TUNNEL NGROK)
+
+Kamera (scan QR) dan GPS **hanya berjalan di halaman HTTPS**. Untuk menguji dari HP —
+atau dari aplikasi Android pembungkus WebView (`SIAPApp`) — tanpa mengupload ke
+hosting, jalankan aplikasi lokal lewat tunnel **ngrok** (URL publik HTTPS).
+
+### Prasyarat
+
+- Apache Laragon jalan (port 80) dan MySQL jalan.
+- ngrok v3 terpasang + authtoken sudah diisi:
+  ```
+  ngrok config add-authtoken <TOKEN>
+  ```
+
+### Menjalankan
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\ngrok-siap.ps1
+```
+
+Script akan memastikan Apache listen di port 80, menjalankan
+`ngrok http 80`, menunggu tunnel siap, lalu menampilkan URL publik beserta
+tautan siap pakai (beranda, presensi, login, QR gerbang). Subfolder aplikasi
+pada URL publik (mis. `/siap`) ikut dideteksi otomatis.
+
+Perintah lain:
+
+```powershell
+... -Action status    # URL tunnel yang sedang aktif
+... -Action stop      # tutup tunnel
+... -Action restart   # tutup lalu buka lagi
+```
+
+Buka URL publik di HP. **Halaman pertama di tiap perangkat** akan menampilkan
+peringatan ngrok “Visit Site” — tekan tombolnya **sekali** (cookie berlaku 7 hari).
+Aplikasi Android/WebView dapat melewati peringatan ini dengan memakai
+*custom User-Agent* (mis. `SIAPApp/1.0`).
+
+> **URL tanpa `/siap`?** Tunnel memakai default vhost Laragon, jadi aplikasinya
+> berada di `/siap`. Agar berada di root domain, buat vhost Apache untuk domain
+> ngrok di `D:\laragon\etc\apache2\sites-enabled\` dengan
+> `DocumentRoot "D:/laragon/www/siap"` + `ServerName <domain-ngrok>`, lalu
+> restart Apache. Base URL dan QR Code tetap benar otomatis.
+
+### Yang terjadi di belakang layar
+
+- **`config/database.php`** menentukan `BASE_URL` otomatis dari request: skema
+  (`https`) + host yang diminta browser + subfolder aplikasi (dibandingkan dengan
+  `DOCUMENT_ROOT`). Jadi QR Code, tautan, dan redirect selalu memakai URL yang
+  benar — baik di `http://siap.test` maupun lewat tunnel ngrok.
+  Host diambil dari header `Host` (nilainya sudah dijamin benar: ngrok menolak
+  request dengan `Host` yang tidak cocok dengan endpoint-nya), **bukan** dari
+  `X-Forwarded-Host` yang bisa dipalsukan klien.
+- **`.htaccess`** memakai `SetEnvIf` untuk membaca header `X-Forwarded-Proto`
+  dari ngrok, sehingga redirect `.php` → URL bersih tetap mengarah ke **URL
+  publik HTTPS** (bukan `http://...` yang diblokir browser sebagai mixed content).
+- **`includes/keamanan.php`** otomatis memakai cookie sesi `Secure` + HSTS saat
+  request datang lewat tunnel HTTPS.
+
+### Catatan penting
+
+- Tunnel ini membuat aplikasi **terbuka untuk siapa pun yang tahu URL-nya**.
+  Ganti password admin bawaan (`admin` / `admin123`) lewat menu **Profil** sebelum
+  siswa/karyawan memakainya.
+- Free plan ngrok: **1 GB transfer + 20.000 request per bulan**, maksimal 3 endpoint
+  aktif, dan **1 domain dev** (alamat domainnya tetap sama antar restart).
+- QR Code yang sudah dicetak memuat URL publik. Jika domain ngrok berubah
+  (mis. berganti akun), QR perlu dicetak ulang.
+- Untuk produksi tetap pakai domain sekolah + hosting (bagian 5), dan set
+  `BASE_URL` secara eksplisit di server lewat `config/production.php`
+  (contoh: `config/production.php.example`) atau environment variable
+  `SIAP_BASE_URL`.
 
 ---
 
@@ -96,8 +176,12 @@ dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan
 1. **Buat Website** di aaPanel (domain sekolah, PHP **8.1/8.2**).
 2. **Buat Database**, catat nama, user, dan password.
 3. **Upload source** ke `/www/wwwroot/<domain-anda>/` lalu ekstrak.
-4. **Konfigurasi** `config/database.php` (kredensial DB) dan set `BASE_URL` ke domain HTTPS,
-   mis. `https://siap.man2kotamadiun.sch.id`. Import `database/database.sql` lewat phpMyAdmin.
+4. **Konfigurasi** `config/database.php` (kredensial DB). Import `database/database.sql`
+   lewat phpMyAdmin. `BASE_URL` dideteksi otomatis dari request, jadi di server
+   produksi tetap sebaiknya di-*override* supaya URL tidak pernah bergantung pada
+   header: salin `config/production.php.example` → `config/production.php` lalu isi
+   domain HTTPS-nya (mis. `https://siap.man2kotamadiun.sch.id`), atau set environment
+   variable `SIAP_BASE_URL`.
 5. **Permission** folder `uploads/`:
    ```
    chown -R www:www /www/wwwroot/<domain-anda>/uploads

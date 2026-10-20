@@ -5,12 +5,14 @@
  * sehingga berlaku untuk semua halaman, termasuk /presensi dan /api.
  */
 
+// Config database (BASE_URL, helpers skema/host) harus dimuat lebih dulu:
+// dipakai bersama oleh https_aktif() dan pembuatan BASE_URL.
+require_once __DIR__ . '/../config/database.php';
+
 /** Apakah koneksi pengguna memakai HTTPS (termasuk di belakang reverse proxy)? */
 function https_aktif(): bool
 {
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
-    if ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443') return true;
-    return strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    return siap_https_aktif();
 }
 
 /**

@@ -1,0 +1,10 @@
+# Override BASE_URL untuk server produksi (berisi domain, jangan di-commit).
+# Salin config/production.php.example menjadi config/production.php.
+config/production.php
+
+# Log tunnel ngrok
+tools/ngrok.log
+tools/ngrok.log.err
+
+# Berkas sementara / log lokal
+*.log
