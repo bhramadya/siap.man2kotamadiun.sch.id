@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 // /portal/izin — daftar pengajuan izin/sakit milik siswa
 $akun = portal_wajib_login();
 $sid = (int) $akun['siswa_id'];
@@ -17,7 +18,9 @@ $hal = min($hal, $totalHal);
 $st = $db->prepare('SELECT * FROM izin_pengajuan WHERE siswa_id = :s ORDER BY id DESC LIMIT ' . $perHalaman . ' OFFSET ' . (($hal - 1) * $perHalaman));
 $st->execute([':s' => $sid]);
 $daftar = $st->fetchAll();
-$menunggu = (int) $db->query('SELECT COUNT(*) FROM izin_pengajuan WHERE siswa_id = ' . $sid . " AND status = 'menunggu'")->fetchColumn();
+$stMenunggu = $db->prepare("SELECT COUNT(*) FROM izin_pengajuan WHERE siswa_id = :s AND status = 'menunggu'");
+$stMenunggu->execute([':s' => $sid]);
+$menunggu = (int) $stMenunggu->fetchColumn();
 
 portal_app_awal('Izin / Sakit', $akun, 'izin');
 if ($info !== '') portal_alert('ok', $info);

@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Halaman cetak Data Presensi (semua baris sesuai filter, tanpa paginasi, tanpa sidebar).
 require_once __DIR__ . '/../includes/auth.php';
 require_login();

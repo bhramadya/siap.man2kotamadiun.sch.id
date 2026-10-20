@@ -1,8 +1,16 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/qr_dinamis.php';
+
+// Mode QR kelas bertanda waktu: poster cetak akan kedaluwarsa dalam hitungan menit -> tidak dicetak.
+if (!qr_kelas_permanen()) {
+    set_flash('warning', 'QR Kelas memakai token bertanda waktu sehingga tidak bisa dicetak. Tampilkan QR kelas di layar, atau aktifkan "QR Kelas permanen" di Pengaturan.');
+    header('Location: ' . modul_url('qr_kelas'));
+    exit;
+}
 
 $db = getDB();
 $settings = get_settings();

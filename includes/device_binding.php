@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * =====================================================================
  * MODUL DEVICE BINDING — SATU SISWA SATU PERANGKAT
@@ -20,6 +21,234 @@ require_once __DIR__ . '/functions.php';
 
 /** Versi skema hash. Naikkan bila rumus hash berubah lagi. */
 const DEVICE_HASH_VERSI = 'v2';
+
+// =====================================================================
+// RAHASIA PERANGKAT DARI SERVER (cookie HttpOnly)
+// UUID dari localStorage bisa dibaca/disalin siapa pun yang memegang HP atau lewat skrip, jadi
+// TIDAK lagi cukup sebagai bukti perangkat. Saat perangkat didaftarkan, server menerbitkan rahasia
+// acak 256-bit di cookie HttpOnly + SameSite=Lax (+ Secure di HTTPS). Database hanya menyimpan
+// hash-nya (device_bindings.secret_hash).
+//
+// MIGRASI BINDING LAMA (dua tahap) — status per baris device_bindings:
+//   LAMA     secret_hash NULL                 -> dikenali dari UUID (selama masa transisi)
+//   MENUNGGU secret_hash terisi, secret_aktif_at NULL -> cookie ATAU UUID masih diterima
+//   AKTIF    secret_aktif_at terisi           -> HANYA cookie
+// LAMA/MENUNGGU -> MENUNGGU: rahasia baru diterbitkan setelah presensi BERHASIL penuh (lolos cek ganda,
+//   jam, hari libur, GPS) atau pada panggilan pasif HP (api/beranda, api/cek_perangkat) bila UUID cocok
+//   dan browser tidak membawa cookie milik binding lain. Presensi yang DITOLAK tidak pernah mengganti kunci.
+// MENUNGGU -> AKTIF: setelah cookie baru kembali dalam presensi yang berhasil, DAN rahasia itu diterbitkan
+//   oleh presensi berhasil pada HARI SEBELUMNYA (kolom secret_terbit_at + secret_terbit_oleh). Rahasia dari
+//   panggilan pasif tidak pernah bisa langsung diaktifkan: presensi berhasil dengan cookie pasif hanya
+//   menggantinya dengan rahasia baru bertanda 'checkin'. Jadi pemegang UUID salinan butuh presensi berhasil
+//   pada dua hari berbeda (tanpa HP asli presensi di antaranya), bukan satu sesi. Selama MENUNGGU, UUID
+//   tetap diterima, jadi HP asli tidak terkunci walau orang lain sempat "mengambil" cookie lewat
+//   panggilan pasif, dan WebView yang kehilangan cookie sebelum menyimpannya tetap bisa presensi.
+// Pengaturan device_legacy_until (tanggal, opsional): setelah tanggal itu lewat, UUID saja tidak
+//   diterima lagi untuk binding LAMA/MENUNGGU (siswa yang belum termigrasi perlu direset admin).
+//   Kosong = tidak ada batas (bawaan).
+// =====================================================================
+const DEVICE_COOKIE_NAMA  = 'SIAP_PERANGKAT';
+const DEVICE_COOKIE_DETIK = 34560000;   // 400 hari (batas maksimal browser); diperpanjang setiap presensi
+
+/** Kolom secret_hash, secret_aktif_at, secret_terbit_at, secret_terbit_oleh (dibuat otomatis; SQL manual: database/migration_keamanan.sql). */
+function siapkan_kolom_rahasia_perangkat(): bool
+{
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $db = getDB();
+        if (!$db->query("SHOW COLUMNS FROM device_bindings LIKE 'secret_hash'")->fetch()) {
+            $db->exec("ALTER TABLE device_bindings ADD COLUMN secret_hash CHAR(64) NULL DEFAULT NULL AFTER device_hash, ADD UNIQUE KEY uniq_device_secret (secret_hash)");
+        }
+        if (!$db->query("SHOW COLUMNS FROM device_bindings LIKE 'secret_aktif_at'")->fetch()) {
+            $db->exec("ALTER TABLE device_bindings ADD COLUMN secret_aktif_at DATETIME NULL DEFAULT NULL AFTER secret_hash");
+            // Rahasia yang sudah ada sebelum kolom ini (pendaftaran baru) dianggap sudah aktif.
+            $db->exec("UPDATE device_bindings SET secret_aktif_at = COALESCE(registered_at, NOW()) WHERE secret_hash IS NOT NULL");
+        }
+        if (!$db->query("SHOW COLUMNS FROM device_bindings LIKE 'secret_terbit_oleh'")->fetch()) {
+            // NULL pada baris MENUNGGU lama = asal tidak diketahui -> diperlakukan seperti 'pasif' (tidak bisa langsung aktif).
+            $db->exec("ALTER TABLE device_bindings ADD COLUMN secret_terbit_at DATETIME NULL DEFAULT NULL AFTER secret_aktif_at, ADD COLUMN secret_terbit_oleh VARCHAR(10) NULL DEFAULT NULL AFTER secret_terbit_at");
+        }
+        return $ok = true;
+    } catch (Throwable $e) {
+        error_log('siapkan_kolom_rahasia_perangkat: ' . $e->getMessage());
+        return $ok = false;
+    }
+}
+
+function rahasia_perangkat_cookie(): ?string
+{
+    $v = (string) ($_COOKIE[DEVICE_COOKIE_NAMA] ?? '');
+    return preg_match('/^[0-9a-f]{64}$/', $v) ? $v : null;
+}
+
+function hash_rahasia_perangkat(string $rahasia): string
+{
+    return hash('sha256', 'perangkat|' . $rahasia);
+}
+
+function kirim_cookie_perangkat(string $rahasia): void
+{
+    $path = rtrim((string) (parse_url(BASE_URL, PHP_URL_PATH) ?? ''), '/') . '/';
+    if (!headers_sent()) {
+        setcookie(DEVICE_COOKIE_NAMA, $rahasia, [
+            'expires'  => time() + DEVICE_COOKIE_DETIK,
+            'path'     => $path,
+            'secure'   => https_aktif(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+    $_COOKIE[DEVICE_COOKIE_NAMA] = $rahasia;
+}
+
+/**
+ * Terbitkan rahasia baru untuk sebuah binding: simpan hash-nya, kirim nilainya lewat cookie.
+ * $aktif = true untuk pendaftaran baru (langsung AKTIF); false untuk migrasi binding lama (MENUNGGU).
+ * $oleh = asal penerbitan: 'daftar' (pendaftaran baru), 'checkin' (presensi berhasil), 'pasif' (api/beranda,
+ * api/cek_perangkat). Hanya rahasia 'checkin' dari hari sebelumnya yang boleh diaktifkan.
+ */
+function terbitkan_rahasia_perangkat(int $bindingId, bool $aktif = true, string $oleh = 'daftar'): bool
+{
+    if (!siapkan_kolom_rahasia_perangkat()) return false;
+    $rahasia = bin2hex(random_bytes(32));
+    getDB()->prepare('UPDATE device_bindings SET secret_hash = :h, secret_aktif_at = ' . ($aktif ? 'NOW()' : 'NULL') . ',
+                      secret_terbit_at = NOW(), secret_terbit_oleh = :o WHERE id = :id')
+           ->execute([':h' => hash_rahasia_perangkat($rahasia), ':o' => substr($oleh, 0, 10), ':id' => $bindingId]);
+    kirim_cookie_perangkat($rahasia);
+    return true;
+}
+
+/** Binding LAMA (tanpa rahasia) atau MENUNGGU (rahasia belum pernah kembali dalam presensi berhasil)? */
+function binding_belum_aktif(array $binding): bool
+{
+    return empty($binding['secret_hash']) || empty($binding['secret_aktif_at']);
+}
+
+/** Masih boleh mengenali binding lama/menunggu dari UUID saja? (pengaturan device_legacy_until) */
+function uuid_lama_diizinkan(): bool
+{
+    $batas = trim((string) (get_settings()['device_legacy_until'] ?? ''));
+    if ($batas === '' || $batas === '0000-00-00') return true;
+    return date('Y-m-d') <= $batas;
+}
+
+/** Binding yang cocok dengan cookie rahasia browser ini, atau null. */
+function binding_dari_cookie(): ?array
+{
+    $rahasia = rahasia_perangkat_cookie();
+    if ($rahasia === null || !siapkan_kolom_rahasia_perangkat()) return null;
+    $st = getDB()->prepare('SELECT * FROM device_bindings WHERE secret_hash = :h LIMIT 1');
+    $st->execute([':h' => hash_rahasia_perangkat($rahasia)]);
+    return $st->fetch() ?: null;
+}
+
+/**
+ * Binding milik PERANGKAT yang sedang dipakai: lewat cookie rahasia; bila tidak ada, lewat UUID
+ * tetapi HANYA untuk binding LAMA/MENUNGGU dan selama masa transisi (device_legacy_until).
+ */
+function cari_binding_perangkat(string $installUuid): ?array
+{
+    if (!siapkan_kolom_rahasia_perangkat()) {
+        return is_valid_install_uuid($installUuid) ? get_device_binding_by_hash(build_device_hash($installUuid)) : null;
+    }
+    $b = binding_dari_cookie();
+    if ($b) return $b;
+    if (!is_valid_install_uuid($installUuid) || !uuid_lama_diizinkan()) return null;
+    $b = get_device_binding_by_hash(build_device_hash($installUuid));
+    return ($b && binding_belum_aktif($b)) ? $b : null;
+}
+
+/**
+ * Cara perangkat ini cocok dengan binding milik siswa: 'cookie', 'uuid' (binding lama/menunggu,
+ * masa transisi), atau null bila tidak cocok.
+ */
+function cara_cocok_perangkat(array $binding, string $installUuid): ?string
+{
+    if (!empty($binding['secret_hash'])) {
+        $rahasia = rahasia_perangkat_cookie();
+        if ($rahasia !== null && hash_equals((string) $binding['secret_hash'], hash_rahasia_perangkat($rahasia))) return 'cookie';
+    }
+    if (binding_belum_aktif($binding) && uuid_lama_diizinkan() && is_valid_install_uuid($installUuid)
+        && hash_equals((string) $binding['device_hash'], build_device_hash($installUuid))) {
+        return 'uuid';
+    }
+    return null;
+}
+
+function perangkat_cocok_dengan_binding(array $binding, string $installUuid): bool
+{
+    return cara_cocok_perangkat($binding, $installUuid) !== null;
+}
+
+/** Rahasia MENUNGGU ini boleh diaktifkan? Hanya bila diterbitkan presensi berhasil pada hari sebelumnya. */
+function rahasia_boleh_diaktifkan(array $binding): bool
+{
+    return ($binding['secret_terbit_oleh'] ?? null) === 'checkin'
+        && !empty($binding['secret_terbit_at'])
+        && substr((string) $binding['secret_terbit_at'], 0, 10) < date('Y-m-d');
+}
+
+/**
+ * Dipanggil SETELAH presensi berhasil penuh. Cocok lewat UUID -> terbitkan rahasia baru (MENUNGGU, 'checkin');
+ * cocok lewat cookie pada binding MENUNGGU -> AKTIF bila rahasianya dari presensi hari sebelumnya; bila
+ * rahasianya dari panggilan pasif (atau asal tak diketahui) -> diganti rahasia 'checkin' baru (tetap MENUNGGU);
+ * cookie aktif -> perpanjang masa berlaku cookie.
+ */
+function selesaikan_migrasi_perangkat(int $siswaId, string $installUuid): void
+{
+    if (!siapkan_kolom_rahasia_perangkat()) return;
+    $binding = get_device_binding($siswaId);
+    if (!$binding) return;
+    $cara = cara_cocok_perangkat($binding, $installUuid);
+    try {
+        if ($cara === 'uuid') {
+            if (terbitkan_rahasia_perangkat((int) $binding['id'], false, 'checkin')) {
+                security_log($siswaId, 'DEVICE_REGISTERED', $binding['device_hash'], 'Perangkat lama diberi rahasia server (cookie), menunggu konfirmasi.');
+            }
+        } elseif ($cara === 'cookie') {
+            if (empty($binding['secret_aktif_at'])) {
+                if (rahasia_boleh_diaktifkan($binding)) {
+                    getDB()->prepare('UPDATE device_bindings SET secret_aktif_at = NOW() WHERE id = :id')->execute([':id' => $binding['id']]);
+                    security_log($siswaId, 'DEVICE_REGISTERED', $binding['device_hash'], 'Rahasia perangkat dikonfirmasi; UUID saja tidak diterima lagi.');
+                } elseif (($binding['secret_terbit_oleh'] ?? null) !== 'checkin') {
+                    // Rahasia pasif tidak pernah langsung diaktifkan: ganti dengan rahasia dari presensi ini.
+                    terbitkan_rahasia_perangkat((int) $binding['id'], false, 'checkin');
+                    return;
+                }
+            }
+            kirim_cookie_perangkat((string) rahasia_perangkat_cookie());
+        }
+    } catch (Throwable $e) {
+        error_log('selesaikan_migrasi_perangkat: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Migrasi pasif (api/beranda, api/cek_perangkat): binding LAMA/MENUNGGU yang dikenali dari UUID diberi
+ * rahasia baru berstatus MENUNGGU, asalkan browser tidak membawa cookie milik binding lain.
+ * Tidak pernah mengaktifkan (UUID tetap diterima sampai cookie kembali dalam presensi berhasil).
+ */
+function migrasi_pasif_perangkat(?array $binding, string $installUuid): void
+{
+    if (!$binding || !siapkan_kolom_rahasia_perangkat() || !binding_belum_aktif($binding)) return;
+    if (cara_cocok_perangkat($binding, $installUuid) !== 'uuid') return;      // cookie sudah cocok / UUID tak cocok
+    $lain = binding_dari_cookie();
+    if ($lain && (int) $lain['id'] !== (int) $binding['id']) return;           // cookie milik binding lain
+    try {
+        terbitkan_rahasia_perangkat((int) $binding['id'], false, 'pasif');
+    } catch (Throwable $e) {
+        error_log('migrasi_pasif_perangkat: ' . $e->getMessage());
+    }
+}
+
+/** Jumlah binding yang belum termigrasi: ['lama' => tanpa rahasia, 'menunggu' => rahasia belum dikonfirmasi]. */
+function hitung_binding_belum_migrasi(): array
+{
+    if (!siapkan_kolom_rahasia_perangkat()) return ['lama' => (int) getDB()->query('SELECT COUNT(*) FROM device_bindings')->fetchColumn(), 'menunggu' => 0];
+    $r = getDB()->query('SELECT SUM(secret_hash IS NULL) lama, SUM(secret_hash IS NOT NULL AND secret_aktif_at IS NULL) menunggu FROM device_bindings')->fetch();
+    return ['lama' => (int) ($r['lama'] ?? 0), 'menunggu' => (int) ($r['menunggu'] ?? 0)];
+}
 
 /**
  * Membentuk device_hash HANYA dari UUID instalasi (kiriman klien) — stabil
@@ -120,7 +349,7 @@ function check_or_register_device(int $siswaId, string $installUuid): array
         // PENTING: cek dulu apakah device (hash) ini SUDAH dipakai siswa LAIN.
         // Tanpa cek ini, 1 perangkat bisa didaftarkan ke banyak siswa berbeda —
         // celah utama titip-absen yang device binding harusnya mencegah.
-        $sudahDipakaiSiswaLain = get_device_binding_by_hash($deviceHash);
+        $sudahDipakaiSiswaLain = cari_binding_perangkat($installUuid) ?: get_device_binding_by_hash($deviceHash);
         if ($sudahDipakaiSiswaLain && (int) $sudahDipakaiSiswaLain['siswa_id'] !== $siswaId) {
             security_log(
                 $siswaId, 'DEVICE_MISMATCH', $deviceHash,
@@ -173,6 +402,7 @@ function check_or_register_device(int $siswaId, string $installUuid): array
             throw $e;
         }
 
+        terbitkan_rahasia_perangkat((int) getDB()->lastInsertId());
         security_log($siswaId, 'DEVICE_REGISTERED', $deviceHash, 'Perangkat baru didaftarkan sebagai perangkat utama.');
         return ['allowed' => true, 'code' => 'REGISTERED_NEW', 'message' => 'Perangkat berhasil didaftarkan.'];
     }
@@ -183,8 +413,18 @@ function check_or_register_device(int $siswaId, string $installUuid): array
         return ['allowed' => false, 'code' => 'BLOCKED', 'message' => 'Perangkat ini diblokir. Silakan hubungi administrator sekolah.'];
     }
 
-    // --- Cocokkan hash ---
-    if (hash_equals($binding['device_hash'], $deviceHash)) {
+    // --- Cookie rahasia di browser ini milik siswa LAIN -> bukan perangkat siswa ini ---
+    $perangkatIni = cari_binding_perangkat($installUuid);
+    if ($perangkatIni && (int) $perangkatIni['siswa_id'] !== $siswaId) {
+        security_log($siswaId, 'DEVICE_MISMATCH', $deviceHash, 'Perangkat milik siswa ID ' . $perangkatIni['siswa_id'] . ' dipakai untuk presensi siswa ini.');
+        return ['allowed' => false, 'code' => 'MISMATCH', 'message' => 'Perangkat tidak terdaftar. Gunakan perangkat yang telah didaftarkan untuk presensi.'];
+    }
+
+    // --- Cocokkan: rahasia cookie, atau UUID untuk binding lama/menunggu (masa transisi) ---
+    // Rahasia baru untuk binding lama TIDAK diterbitkan di sini: baru setelah presensi berhasil penuh
+    // (selesaikan_migrasi_perangkat() di proses_simpan_presensi), supaya presensi yang ditolak
+    // (sudah presensi, di luar jam, hari libur, di luar radius GPS) tidak pernah mengganti kunci.
+    if (perangkat_cocok_dengan_binding($binding, $installUuid)) {
         $upd = getDB()->prepare(
             'UPDATE device_bindings SET last_used_at = NOW(), ip_address = :ip, status = "ACTIVE" WHERE id = :id'
         );
@@ -439,7 +679,7 @@ function _selesaikan_pendaftaran_pasangan(array $row, int $siswaId, string $inst
     $db = getDB();
     $deviceHash = build_device_hash($installUuid);
 
-    $lain = get_device_binding_by_hash($deviceHash);
+    $lain = cari_binding_perangkat($installUuid) ?: get_device_binding_by_hash($deviceHash);
     if ($lain && (int) $lain['siswa_id'] !== $siswaId) {
         security_log($siswaId, 'DEVICE_MISMATCH', $deviceHash, 'Percobaan daftar (' . $via . ') di device milik siswa ID ' . $lain['siswa_id'] . '.');
         return $gagal('DEVICE_ALREADY_BOUND', 'Perangkat ini sudah terdaftar untuk siswa lain. Satu perangkat hanya untuk satu siswa.');
@@ -468,6 +708,7 @@ function _selesaikan_pendaftaran_pasangan(array $row, int $siswaId, string $inst
         throw $e;
     }
 
+    terbitkan_rahasia_perangkat((int) $db->lastInsertId());
     security_log($siswaId, 'DEVICE_REGISTERED', $deviceHash, 'Perangkat didaftarkan memakai ' . $via . '.');
     return ['success' => true, 'code' => 'PAIRED', 'message' => 'Perangkat berhasil didaftarkan.'];
 }

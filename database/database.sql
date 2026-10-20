@@ -4,11 +4,15 @@
 --
 -- CARA PAKAI: buat database kosong (mis. `siapabsen`), pilih database itu di
 -- phpMyAdmin, lalu Import file ini. Nama database harus sama dengan DB_NAME
--- di config/database.php. Tabel tambahan (role_permissions, login_attempts,
--- device_pairing_codes) juga dibuat otomatis oleh aplikasi bila belum ada.
+-- di config/database.local.php. Seluruh tabel portal siswa & pengajuan izin sudah
+-- termasuk di file ini. Tabel tambahan (role_permissions, device_pairing_codes) dibuat
+-- otomatis oleh aplikasi bila belum ada.
 --
--- Akun awal: username `admin`, password `admin123`
--- PENTING: SEGERA ganti password ini setelah login pertama!
+-- UPGRADE instalasi lama: JANGAN import file ini lagi; jalankan file migration_*.sql
+-- (lihat README bagian "Upgrade dari versi sebelumnya").
+--
+-- Akun awal: username `admin`, password `admin123`. Aplikasi MEMAKSA penggantian
+-- password ini saat login pertama (kolom users.must_change_password).
 -- =====================================================================
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
@@ -32,6 +36,10 @@ CREATE TABLE `device_bindings` (
   `siswa_id` int UNSIGNED NOT NULL,
   `device_uuid` varchar(64) DEFAULT NULL COMMENT 'UUID mentah utk referensi (opsional, boleh NULL demi privasi)',
   `device_hash` varchar(64) NOT NULL COMMENT 'sha256 dari device identifier',
+  `secret_hash` char(64) DEFAULT NULL COMMENT 'sha256 dari rahasia perangkat yang diterbitkan server (cookie HttpOnly SIAP_PERANGKAT)',
+  `secret_aktif_at` datetime DEFAULT NULL COMMENT 'NULL = rahasia menunggu konfirmasi (UUID masih diterima); terisi = hanya cookie',
+  `secret_terbit_at` datetime DEFAULT NULL COMMENT 'kapan rahasia terakhir diterbitkan',
+  `secret_terbit_oleh` varchar(10) DEFAULT NULL COMMENT 'daftar / checkin / pasif; hanya checkin hari sebelumnya yang bisa diaktifkan',
   `device_name` varchar(100) DEFAULT NULL,
   `browser` varchar(100) DEFAULT NULL,
   `os` varchar(100) DEFAULT NULL,
@@ -98,7 +106,7 @@ CREATE TABLE `settings` (
   `latitude_sekolah` decimal(10,7) DEFAULT NULL,
   `longitude_sekolah` decimal(10,7) DEFAULT NULL,
   `radius_meter` int UNSIGNED NOT NULL DEFAULT '100',
-  `gps_aktif` tinyint(1) NOT NULL DEFAULT '0',
+  `gps_aktif` tinyint(1) NOT NULL DEFAULT '1',
   `validasi_ip_aktif` tinyint(1) NOT NULL DEFAULT '0',
   `device_binding_aktif` tinyint(1) NOT NULL DEFAULT '1',
   `qr_dinamis_durasi_detik` int UNSIGNED NOT NULL DEFAULT '120',
@@ -110,7 +118,12 @@ CREATE TABLE `settings` (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `hari_efektif` varchar(20) NOT NULL DEFAULT '1,2,3,4,5',
   `alamat_sekolah` text,
-  `nama_kepala` varchar(150) DEFAULT NULL
+  `nama_kepala` varchar(150) DEFAULT NULL,
+  `device_wajib_kode` tinyint(1) NOT NULL DEFAULT '0',
+  `portal_siswa_aktif` tinyint(1) NOT NULL DEFAULT '1',
+  `qr_kelas_permanen` tinyint(1) NOT NULL DEFAULT '0' COMMENT '1 = QR kelas permanen (boleh dicetak), 0 = token bertanda waktu (HMAC)',
+  `kunci_rahasia` varchar(128) DEFAULT NULL COMMENT 'kunci HMAC server bila app_secret tidak diisi di config/database.local.php',
+  `device_legacy_until` date DEFAULT NULL COMMENT 'setelah tanggal ini perangkat lama tidak dikenali dari UUID saja; NULL = tanpa batas'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `siswa` (
@@ -138,6 +151,7 @@ CREATE TABLE `users` (
   `password` varchar(255) NOT NULL,
   `role` enum('admin') NOT NULL DEFAULT 'admin',
   `status` enum('aktif','nonaktif') NOT NULL DEFAULT 'aktif',
+  `must_change_password` tinyint(1) NOT NULL DEFAULT '0' COMMENT '1 = wajib ganti password saat login berikutnya',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -152,6 +166,7 @@ ALTER TABLE `device_bindings`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_siswa_device` (`siswa_id`),
   ADD UNIQUE KEY `uniq_device_hash` (`device_hash`),
+  ADD UNIQUE KEY `uniq_device_secret` (`secret_hash`),
   ADD KEY `fk_device_reset_by` (`reset_by`),
   ADD KEY `idx_device_status` (`status`);
 
@@ -246,15 +261,106 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   INDEX `idx_la_ip` (`ip_address`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- IP dikenal: IP dengan login berhasil per akun (pengecualian pembatas login, 30 hari)
+CREATE TABLE IF NOT EXISTS `login_ip_dikenal` (
+  `jenis` VARCHAR(10) NOT NULL,
+  `akun` VARCHAR(60) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL,
+  `terakhir_berhasil` DATETIME NOT NULL,
+  PRIMARY KEY (`jenis`, `akun`, `ip_address`),
+  INDEX `idx_ipk_waktu` (`terakhir_berhasil`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Portal siswa (sama dengan database/migration_akun_siswa.sql)
+CREATE TABLE IF NOT EXISTS siswa_akun (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  siswa_id INT UNSIGNED NOT NULL,
+  password_hash VARCHAR(255) NULL,
+  status ENUM('menunggu','aktif','nonaktif') NOT NULL DEFAULT 'menunggu',
+  kode_hash VARCHAR(128) NULL,
+  kode_salt VARCHAR(32) NULL,
+  kode_berlaku_hingga DATETIME NULL,
+  kode_salah INT UNSIGNED NOT NULL DEFAULT 0,
+  kode_terkunci_hingga DATETIME NULL,
+  sesi_versi INT UNSIGNED NOT NULL DEFAULT 1,
+  dibuat_oleh INT UNSIGNED NULL,
+  login_terakhir DATETIME NULL,
+  password_diubah DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_akun_siswa (siswa_id),
+  CONSTRAINT fk_akun_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS portal_attempts (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  kunci VARCHAR(60) NOT NULL,
+  ip_address VARCHAR(45) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_pa_kunci (kunci, created_at),
+  INDEX idx_pa_ip (ip_address, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pengajuan izin/sakit + notifikasi portal (sama dengan database/migration_izin.sql)
+CREATE TABLE IF NOT EXISTS izin_pengajuan (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  siswa_id INT UNSIGNED NOT NULL,
+  jenis ENUM('izin','sakit') NOT NULL,
+  tanggal_mulai DATE NOT NULL,
+  tanggal_selesai DATE NOT NULL,
+  alasan VARCHAR(500) NOT NULL,
+  lampiran VARCHAR(80) NULL,
+  lampiran_nama VARCHAR(120) NULL,
+  lampiran_tipe VARCHAR(40) NULL,
+  lampiran_dihapus_at DATETIME NULL,
+  status ENUM('menunggu','disetujui','ditolak','dibatalkan','dicabut') NOT NULL DEFAULT 'menunggu',
+  diajukan_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  diproses_oleh INT UNSIGNED NULL,
+  diproses_nama VARCHAR(100) NULL,
+  diproses_at DATETIME NULL,
+  catatan_petugas VARCHAR(300) NULL,
+  hari_diterapkan SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_iz_status (status, diajukan_at),
+  KEY idx_iz_siswa (siswa_id, tanggal_mulai),
+  KEY idx_iz_tanggal (tanggal_mulai, tanggal_selesai),
+  CONSTRAINT fk_izin_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS izin_hari (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  pengajuan_id INT UNSIGNED NOT NULL,
+  tanggal DATE NOT NULL,
+  hasil ENUM('diterapkan','sudah_ada','dipakai_hadir','dicabut') NOT NULL,
+  UNIQUE KEY uniq_izin_hari (pengajuan_id, tanggal),
+  CONSTRAINT fk_izin_hari FOREIGN KEY (pengajuan_id) REFERENCES izin_pengajuan (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS portal_notifikasi (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  siswa_id INT UNSIGNED NOT NULL,
+  jenis VARCHAR(30) NOT NULL,
+  judul VARCHAR(120) NOT NULL,
+  isi VARCHAR(400) NOT NULL,
+  tautan VARCHAR(120) NULL,
+  dibaca_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_notif_siswa (siswa_id, dibaca_at, id),
+  CONSTRAINT fk_notif_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Data awal
-INSERT INTO `users` (`nama`, `username`, `password`, `role`, `status`) VALUES
-('Administrator', 'admin', '$2b$10$b41vg2ko8zqtu.jWTfT48eXiFP5YLFg8U8IxUn7HI76kcI5upq7Ha', 'admin', 'aktif');
+-- admin / admin123: WAJIB diganti saat login pertama (must_change_password = 1)
+INSERT INTO `users` (`nama`, `username`, `password`, `role`, `status`, `must_change_password`) VALUES
+('Administrator', 'admin', '$2b$10$b41vg2ko8zqtu.jWTfT48eXiFP5YLFg8U8IxUn7HI76kcI5upq7Ha', 'admin', 'aktif', 1);
 
 INSERT INTO `settings`
   (`nama_sekolah`, `tahun_pelajaran`, `jam_masuk`, `batas_terlambat`,
-   `latitude_sekolah`, `longitude_sekolah`, `radius_meter`, `gps_aktif`)
+   `latitude_sekolah`, `longitude_sekolah`, `radius_meter`, `gps_aktif`, `qr_kelas_permanen`)
 VALUES
   ('SMA Negeri 1 Contoh', '2026/2027', '07:00:00', '07:15:00',
-   -7.1234567, 111.1234567, 100, 0);
+   -7.1234567, 111.1234567, 100, 1, 0);
+-- GPS AKTIF secara bawaan: ganti koordinat contoh di atas dengan koordinat sekolah (menu Pengaturan)
+-- sebelum dipakai, karena presensi di luar radius ditolak.
 
 SET FOREIGN_KEY_CHECKS = 1;

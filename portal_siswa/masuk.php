@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 // /portal/masuk — login siswa (username = NISN)
 if (portal_siswa_sekarang()) { header('Location: ' . portal_url()); exit; }
 

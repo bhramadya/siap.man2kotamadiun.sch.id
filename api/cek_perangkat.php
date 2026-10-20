@@ -20,7 +20,8 @@ try {
         json_response(['success' => false, 'message' => 'Identitas perangkat tidak valid.']);
     }
 
-    $b = get_device_binding_by_hash(build_device_hash($uuid));
+    $b = cari_binding_perangkat($uuid);
+    migrasi_pasif_perangkat($b, $uuid);   // binding lama -> rahasia server (status menunggu)
     if (!$b) {
         json_response(['success' => true, 'wajib' => true, 'terdaftar' => false, 'status' => 'BELUM']);
     }

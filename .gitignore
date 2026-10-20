@@ -8,3 +8,11 @@ tools/ngrok.log.err
 
 # Berkas sementara / log lokal
 *.log
+# Konfigurasi lokal (kredensial database, BASE_URL, kunci rahasia) — JANGAN di-commit
+config/database.local.php
+
+# Berkas unggahan pengguna (foto siswa, logo, surat izin/dokter = data pribadi/kesehatan)
+uploads/izin/*
+!uploads/izin/.htaccess
+uploads/siswa/*
+!uploads/siswa/.htaccess

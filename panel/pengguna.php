@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Manajemen pengguna (admin & operator). Form tambah/edit dimuat sebagai popup (?modal=1).
 $modal = !empty($_REQUEST['modal']);
 if ($modal) {
@@ -66,8 +67,8 @@ if ($modal) {
     if (!preg_match('/^[A-Za-z0-9_.]{3,50}$/', $data['username'])) $errors[] = 'Username 3–50 karakter: huruf, angka, titik, atau garis bawah.';
     if (!isset(DAFTAR_ROLE[$data['role']])) $errors[] = 'Role tidak valid.';
     if (!in_array($data['status'], ['aktif', 'nonaktif'], true)) $errors[] = 'Status tidak valid.';
-    if (!$user && strlen($password) < 6) $errors[] = 'Password wajib diisi minimal 6 karakter.';
-    if ($user && $password !== '' && strlen($password) < 6) $errors[] = 'Password baru minimal 6 karakter.';
+    if (!$user && strlen($password) < 8) $errors[] = 'Password wajib diisi minimal 8 karakter.';
+    if ($user && $password !== '' && strlen($password) < 8) $errors[] = 'Password baru minimal 8 karakter.';
     if (!$errors) {
       $st = $db->prepare('SELECT id FROM users WHERE username = :u AND id <> :id');
       $st->execute([':u' => $data['username'], ':id' => $id]);
@@ -129,7 +130,7 @@ if ($modal) {
       <?php endif; ?>
       <div class="col-12">
         <label class="form-label">Password <?= $user ? '' : '<span class="text-danger">*</span>' ?></label>
-        <input type="password" name="password" class="form-control" placeholder="<?= $user ? 'Kosongkan jika tidak diganti' : 'Minimal 6 karakter' ?>" <?= $user ? '' : 'required' ?>>
+        <input type="password" name="password" class="form-control" placeholder="<?= $user ? 'Kosongkan jika tidak diganti' : 'Minimal 8 karakter' ?>" <?= $user ? '' : 'required' ?>>
       </div>
     </div>
     <div class="mt-4 d-flex justify-content-end gap-2">

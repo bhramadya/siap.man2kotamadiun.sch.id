@@ -1,9 +1,14 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 /**
  * /izin/{id}/lampiran — lampiran pengajuan (surat dokter = DATA KESEHATAN).
- * Izin 'izin.lihat' sudah diperiksa router. Setiap pembukaan dicatat di Log Keamanan sebagai jejak audit.
- * Sengaja TIDAK memuat header.php: keluarannya berkas, bukan halaman.
+ * Sengaja TIDAK memuat header.php (keluarannya berkas, bukan halaman), jadi login & izin 'izin.lihat'
+ * diperiksa SENDIRI di sini — tidak bergantung pada router/.htaccess. Setiap pembukaan dicatat di
+ * Log Keamanan sebagai jejak audit.
  */
+require_once __DIR__ . '/../includes/auth.php';
+require_login();
+if (!can('izin.lihat')) tolak_akses();
 require_once __DIR__ . '/../includes/izin.php';
 
 $row = izin_siapkan_tabel() ? izin_ambil((int) ($_GET['id'] ?? 0)) : null;

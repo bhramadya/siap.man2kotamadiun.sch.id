@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
 require_once __DIR__ . '/../includes/qr_dinamis.php';
@@ -26,6 +27,10 @@ if ($kelas !== '') {
 
     $settings = get_settings();
     $qr = get_or_create_qr_kelas($kelas);
+    // Mode bertanda waktu: isi QR berganti tiap durasi QR gerbang, halaman memuat ulang sendiri.
+    $permanen = qr_kelas_permanen();
+    $durasiQr = qr_kelas_durasi_detik();
+    $isiQr = BASE_URL . '/presensi/?gate=' . qr_kelas_token_tampil($qr);
     $csrfToken = csrf_token(); // butuh session, sudah aktif krn require_login()
     $logoFile = !empty($settings['logo']) ? $settings['logo'] : null;
     ?>
@@ -33,6 +38,7 @@ if ($kelas !== '') {
     <html lang="id">
     <head>
     <meta charset="UTF-8">
+    <?php if (!$permanen): ?><meta http-equiv="refresh" content="<?= (int) $durasiQr ?>"><?php endif; ?>
     <title>QR Kelas <?= e($kelas) ?></title>
 <?= favicon_tag() ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -98,11 +104,15 @@ if ($kelas !== '') {
         <p class="mb-2"><span class="badge bg-primary badge-kelas">Kelas <?= e($kelas) ?></span></p>
         <p class="mb-1 fs-5">Scan QR ini dengan perangkat Anda untuk presensi di kelas <?= e($kelas) ?></p>
         <div id="qrHolder" class="my-3 d-flex justify-content-center"></div>
+        <?php if ($permanen): ?>
         <p class="text-muted small mb-3">QR permanen untuk kelas ini — hanya berlaku bagi siswa kelas <?= e($kelas) ?>, aman dicetak dan ditempel.</p>
+        <?php else: ?>
+        <p class="text-muted small mb-3">QR ini berganti otomatis setiap <?= (int) $durasiQr ?> detik dan hanya berlaku bagi siswa kelas <?= e($kelas) ?>. Biarkan halaman ini tampil di layar kelas; QR tidak bisa dicetak.</p>
+        <?php endif; ?>
 
         <div class="d-flex gap-2 justify-content-center mt-3 flex-wrap">
           <a href="<?= modul_url('qr_kelas') ?>" class="btn btn-outline-secondary btn-sm">Ganti Kelas</a>
-          <?php if (can('qr_kelas.cetak')): ?><button type="button" class="btn btn-outline-light btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> Cetak Kartu Ini</button><?php endif; ?>
+          <?php if ($permanen && can('qr_kelas.cetak')): ?><button type="button" class="btn btn-outline-light btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> Cetak Kartu Ini</button><?php endif; ?>
           <?php if (can('qr_kelas.generate')): ?><button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalRegen">
             <i class="bi bi-arrow-repeat"></i> Regenerate QR Ini
           </button><?php endif; ?>
@@ -168,7 +178,7 @@ if ($kelas !== '') {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="<?= BASE_URL ?>/assets/js/vendor/qrcode.js"></script>
     <script>
-    const content = <?= json_encode(BASE_URL . '/presensi/?gate=' . $qr['token']) ?>;
+    const content = <?= json_encode($isiQr) ?>;
     const qr = qrcode(0, 'M');
     qr.addData(content);
     qr.make();
@@ -192,15 +202,19 @@ $perJenjang = kelompokkan_per_jenjang($kelasList);
 // thumbnail QR-nya bisa langsung ditampilkan di kartu. Tidak pernah generate
 // ULANG kalau sudah ada -> tidak mengubah QR yang mungkin sudah dicetak.
 $tokenPerKelas = [];
+$permanen = qr_kelas_permanen();
 foreach ($kelasList as $k) {
-    $tokenPerKelas[$k] = get_or_create_qr_kelas($k)['token'];
+    $tokenPerKelas[$k] = qr_kelas_token_tampil(get_or_create_qr_kelas($k));
 }
 ?>
 <div class="konten-biasa">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0"><i class="bi bi-easel2"></i> QR Kelas</h4>
-    <?php if (can('qr_kelas.cetak')): ?><button type="button" class="btn btn-outline-secondary" onclick="cetakKelasGrid(null)"><i class="bi bi-printer"></i> Cetak Semua QR Kelas</button><?php endif; ?>
+    <?php if ($permanen && can('qr_kelas.cetak')): ?><button type="button" class="btn btn-outline-secondary" onclick="cetakKelasGrid(null)"><i class="bi bi-printer"></i> Cetak Semua QR Kelas</button><?php endif; ?>
   </div>
+  <?php if (!$permanen): ?>
+    <div class="alert alert-info small"><i class="bi bi-clock-history"></i> QR Kelas memakai <strong>token bertanda waktu</strong>: buka QR sebuah kelas dan tampilkan di layar/proyektor kelas (berganti otomatis). Poster QR kelas yang pernah dicetak tidak berlaku lagi. Mode cetak permanen bisa diaktifkan di Pengaturan (kurang aman).</div>
+  <?php endif; ?>
 
   <?php if (empty($kelasList)): ?>
     <div class="card"><div class="card-body">
@@ -214,7 +228,7 @@ foreach ($kelasList as $k) {
             <h6>Jenjang <?= e($jenjang) ?></h6>
             <div class="sub"><?= count($daftarKelasJenjang) ?> kelas</div>
           </div>
-          <?php if (can('qr_kelas.cetak')): ?><button type="button" class="btn btn-light border btn-sm" onclick="cetakKelasGrid('<?= e($jenjang) ?>')">
+          <?php if ($permanen && can('qr_kelas.cetak')): ?><button type="button" class="btn btn-light border btn-sm" onclick="cetakKelasGrid('<?= e($jenjang) ?>')">
             <i class="bi bi-printer"></i> Cetak Semua Jenjang <?= e($jenjang) ?>
           </button><?php endif; ?>
         </div>

@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * Pengaturan keamanan dasar: header HTTP + cookie sesi.
  * Dimuat otomatis oleh auth.php dan functions.php (sekali saja, require_once),

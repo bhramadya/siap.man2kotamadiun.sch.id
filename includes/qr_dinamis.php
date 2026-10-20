@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * QR DINAMIS — GERBANG SEKOLAH & KELAS (Model B)
  * Token berganti berkala. Ditampilkan di layar/monitor (gerbang ATAU kelas),
@@ -37,14 +38,74 @@ function generate_qr_dinamis(string $lokasi = 'Gerbang Utama', ?string $kelasTar
 /**
  * Ambil detail token QR dinamis jika masih valid & belum kedaluwarsa, else null.
  * Dipakai saat proses simpan presensi utk mengecek kelas_target-nya.
+ * - Token bertanda "k1.<id>.<exp>.<hmac>" = QR kelas bertanda waktu (lihat qr_kelas_token_bertanda()).
+ * - Token mentah QR kelas (yang tercetak di poster) hanya berlaku bila "QR Kelas permanen" aktif.
  */
 function get_active_qr_dinamis(string $token): ?array
 {
+    if (strncmp($token, 'k1.', 3) === 0) return qr_kelas_verifikasi_token($token);
     $stmt = getDB()->prepare(
         'SELECT * FROM qr_dinamis WHERE token = :token AND status = "AKTIF" AND kadaluarsa_at >= NOW() LIMIT 1'
     );
     $stmt->execute([':token' => $token]);
-    return $stmt->fetch() ?: null;
+    $row = $stmt->fetch() ?: null;
+    if ($row && !empty($row['kelas_target']) && !qr_kelas_permanen()) return null;
+    return $row;
+}
+
+// =====================================================================
+// QR KELAS BERTANDA WAKTU (HMAC)
+// Bila "QR Kelas permanen" dimatikan, layar kelas menampilkan token yang ditandatangani server
+// (HMAC-SHA256 dengan kunci rahasia server) dan berlaku singkat: durasi QR gerbang + toleransi.
+// Foto QR yang dibagikan keluar kelas cepat kedaluwarsa. Regenerate QR kelas juga membatalkan
+// semua token bertanda milik kelas itu (token baris ikut ditandatangani).
+// =====================================================================
+const QR_KELAS_TOLERANSI_DETIK = 180;   // waktu untuk scan -> konfirmasi -> simpan
+
+/** Mode QR kelas: true = permanen/boleh dicetak (perilaku lama), false = bertanda waktu. */
+function qr_kelas_permanen(): bool
+{
+    $s = get_settings();
+    return !array_key_exists('qr_kelas_permanen', $s) || (int) $s['qr_kelas_permanen'] === 1;
+}
+
+function qr_kelas_durasi_detik(): int
+{
+    return max(30, (int) (get_settings()['qr_dinamis_durasi_detik'] ?? 120));
+}
+
+function qr_kelas_tanda(int $id, int $exp, string $tokenBaris): string
+{
+    return substr(hash_hmac('sha256', 'k1|' . $id . '|' . $exp . '|' . $tokenBaris, kunci_rahasia_server()), 0, 32);
+}
+
+/** Token bertanda waktu untuk baris QR kelas aktif (ditampilkan di layar kelas). */
+function qr_kelas_token_bertanda(array $qrRow): string
+{
+    $exp = time() + qr_kelas_durasi_detik() + QR_KELAS_TOLERANSI_DETIK;
+    return 'k1.' . (int) $qrRow['id'] . '.' . $exp . '.' . qr_kelas_tanda((int) $qrRow['id'], $exp, (string) $qrRow['token']);
+}
+
+/** Token yang dimasukkan ke QR kelas sesuai mode (mentah bila permanen, bertanda bila tidak). */
+function qr_kelas_token_tampil(array $qrRow): string
+{
+    return qr_kelas_permanen() ? (string) $qrRow['token'] : qr_kelas_token_bertanda($qrRow);
+}
+
+function qr_kelas_verifikasi_token(string $token): ?array
+{
+    if (!preg_match('/^k1\.(\d{1,10})\.(\d{10})\.([0-9a-f]{32})$/', $token, $m)) return null;
+    $id = (int) $m[1];
+    $exp = (int) $m[2];
+    $sekarang = time();
+    if ($exp < $sekarang || $exp > $sekarang + qr_kelas_durasi_detik() + QR_KELAS_TOLERANSI_DETIK + 60) return null;
+    $stmt = getDB()->prepare(
+        'SELECT * FROM qr_dinamis WHERE id = :id AND kelas_target IS NOT NULL AND status = "AKTIF" LIMIT 1'
+    );
+    $stmt->execute([':id' => $id]);
+    $row = $stmt->fetch();
+    if (!$row || !hash_equals(qr_kelas_tanda($id, $exp, (string) $row['token']), $m[3])) return null;
+    return $row;
 }
 
 /**
@@ -57,7 +118,7 @@ function validate_qr_dinamis(string $token): bool
 }
 
 // =====================================================================
-// QR KELAS PERMANEN
+// QR KELAS PERMANEN (baris dasar QR kelas; isi QR yang ditampilkan lihat qr_kelas_token_tampil())
 // Beda dengan QR Gerbang (otomatis berganti tiap sekian detik), QR Kelas
 // bersifat TETAP/PATEN — tidak berganti otomatis, supaya bisa dicetak atau
 // ditempel di kelas tanpa perlu layar yang terus menyala. Hanya admin yang
@@ -86,7 +147,10 @@ function buat_qr_kelas_permanen(string $kelas): array
     );
     $stmt->execute([':token' => $token, ':lokasi' => $lokasi, ':kelas' => $kelas]);
 
-    return get_active_qr_dinamis($token);
+    // Baca langsung (bukan lewat get_active_qr_dinamis: token mentah QR kelas ditolak di mode bertanda waktu).
+    $baru = $db->prepare('SELECT * FROM qr_dinamis WHERE token = :token LIMIT 1');
+    $baru->execute([':token' => $token]);
+    return $baru->fetch();
 }
 
 /**

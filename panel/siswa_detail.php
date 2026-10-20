@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Detail siswa — URL: /siswa/{nis}  (router mengisi $_GET['id'] dari NIS)
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/device_binding.php';
@@ -20,7 +21,7 @@ $binding = get_device_binding($id);
 
 // Rekap kehadiran bulan berjalan
 $awalBulan = date('Y-m-01');
-$st = $db->prepare('SELECT status, COUNT(*) c FROM presensi WHERE siswa_id = :id AND tanggal >= :awal GROUP BY status');
+$st = $db->prepare('SELECT status, COUNT(*) c FROM presensi WHERE siswa_id = :id AND tanggal >= :awal AND tanggal <= CURDATE() GROUP BY status');
 $st->execute([':id' => $id, ':awal' => $awalBulan]);
 $rekap = ['HADIR' => 0, 'TERLAMBAT' => 0, 'IZIN' => 0, 'SAKIT' => 0, 'ALPA' => 0];
 foreach ($st->fetchAll() as $r) $rekap[$r['status']] = (int) $r['c'];

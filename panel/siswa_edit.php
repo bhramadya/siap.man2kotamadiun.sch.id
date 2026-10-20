@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Mode popup (?modal=1): hanya menampilkan formulir (tanpa layout), dimuat lewat AJAX ke dalam modal.
 $modal = !empty($_REQUEST['modal']);
 if ($modal) {

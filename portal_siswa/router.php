@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 /**
  * Router portal siswa — dipanggil dari index.php untuk semua URL /portal/...
  *   /portal            beranda siswa (wajib masuk)

@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 // /portal/notifikasi — pemberitahuan status pengajuan. Membuka halaman ini menandai semuanya sudah dibaca.
 $akun = portal_wajib_login();
 $sid = (int) $akun['siswa_id'];

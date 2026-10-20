@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * Logika inti proses presensi. Dipakai oleh halaman /presensi dan /api
  * agar validasi TIDAK PERNAH hanya bergantung pada JavaScript di browser.
@@ -37,16 +38,17 @@ function identify_siswa_by_token(string $qrToken): ?array
  */
 function identify_siswa_by_device(string $installUuid): ?array
 {
-    if (!is_valid_install_uuid($installUuid)) return null;
-    $hash = build_device_hash($installUuid);
+    // Dikenali dari cookie rahasia server; UUID saja hanya untuk binding lama yang belum diikat.
+    $binding = cari_binding_perangkat($installUuid);
+    if (!$binding) return null;
 
     $stmt = getDB()->prepare(
         'SELECT s.*, db.status AS device_status, db.device_hash
          FROM device_bindings db
          JOIN siswa s ON s.id = db.siswa_id
-         WHERE db.device_hash = :hash LIMIT 1'
+         WHERE db.id = :id LIMIT 1'
     );
-    $stmt->execute([':hash' => $hash]);
+    $stmt->execute([':id' => $binding['id']]);
     return $stmt->fetch() ?: null;
 }
 
@@ -81,7 +83,8 @@ function get_ringkasan_bulanan_siswa(int $siswaId, string $tanggalAcuan): array
             SUM(status IN ('ALPA','IZIN','SAKIT')) AS tidak_hadir,
             COUNT(*) AS total_hari
          FROM presensi
-         WHERE siswa_id = :sid AND MONTH(tanggal) = :bulan AND YEAR(tanggal) = :tahun"
+         WHERE siswa_id = :sid AND MONTH(tanggal) = :bulan AND YEAR(tanggal) = :tahun
+           AND tanggal <= CURDATE()"
     );
     $stmt->execute([':sid' => $siswaId, ':bulan' => $bulan, ':tahun' => $tahun]);
     $r = $stmt->fetch();
@@ -103,7 +106,8 @@ function get_ringkasan_bulanan_siswa(int $siswaId, string $tanggalAcuan): array
 
 /**
  * PROSES UTAMA: validasi menyeluruh + simpan presensi.
- * $installUuid WAJIB dikirim dari klien (localStorage), tidak pernah dipercaya mentah tanpa hashing.
+ * $installUuid dikirim dari klien (localStorage); bukti perangkat yang sesungguhnya adalah cookie
+ * rahasia dari server (lihat includes/device_binding.php), UUID hanya untuk binding lama.
  *
  * Return: ['success'=>bool, 'code'=>string, 'message'=>string, 'data'=>array|null]
  */
@@ -240,6 +244,11 @@ function proses_simpan_presensi(int $siswaId, string $gateToken, string $install
 
     // 11. Security log
     security_log($siswaId, 'PRESENCE_SUCCESS', build_device_hash($installUuid), "Presensi $statusPresensi jam $jam");
+
+    // 12. Presensi berhasil penuh -> baru sekarang binding lama diberi rahasia server / dikonfirmasi.
+    if (!empty($settings['device_binding_aktif']) && $deviceResult['code'] === 'MATCH') {
+        selesaikan_migrasi_perangkat($siswaId, $installUuid);
+    }
 
     return [
         'success' => true,
