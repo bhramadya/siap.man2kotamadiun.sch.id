@@ -21,6 +21,7 @@ try {
     }
 
     $b = cari_binding_perangkat($uuid);
+    migrasi_pasif_perangkat($b, $uuid);   // binding lama -> rahasia server (status menunggu)
     if (!$b) {
         json_response(['success' => true, 'wajib' => true, 'terdaftar' => false, 'status' => 'BELUM']);
     }

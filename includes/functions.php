@@ -522,6 +522,8 @@ function get_settings(): array
                 // ditempel tetap berlaku; instalasi baru (database.sql) memakai 0 = QR bertanda waktu.
                 'qr_kelas_permanen' => 'TINYINT(1) NOT NULL DEFAULT 1',
                 'kunci_rahasia'  => 'VARCHAR(128) NULL',
+                // Setelah tanggal ini, perangkat lama tidak dikenali lagi dari UUID saja. NULL = tanpa batas.
+                'device_legacy_until' => 'DATE NULL',
             ];
             $berubah = false;
             foreach ($kolomBaru as $kolom => $definisi) {

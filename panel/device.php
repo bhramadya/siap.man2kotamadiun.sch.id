@@ -190,6 +190,26 @@ $sasaranAwal = ($kelas !== '' && isset($massal['kelas:' . $kelas])) ? 'kelas:' .
 ?>
 <h4 class="mb-3"><i class="bi bi-phone"></i> Manajemen Perangkat</h4>
 
+<?php
+// Migrasi ke rahasia server (cookie): berapa perangkat yang masih dikenali dari UUID saja.
+$belumMigrasi = hitung_binding_belum_migrasi();
+$batasLama = trim((string) (get_settings()['device_legacy_until'] ?? ''));
+if ($belumMigrasi['lama'] + $belumMigrasi['menunggu'] > 0): ?>
+<div class="alert alert-info small d-flex gap-2 align-items-start">
+  <i class="bi bi-shield-lock fs-5"></i>
+  <div>
+    <strong><?= (int) $belumMigrasi['lama'] ?> perangkat belum diikat</strong> ke rahasia server dan
+    <strong><?= (int) $belumMigrasi['menunggu'] ?> menunggu konfirmasi</strong> (rahasia sudah dikirim, belum dipakai presensi).
+    Perangkat ini masih dikenali dari UUID saja dan otomatis termigrasi saat siswa membuka beranda atau presensi berhasil.
+    <?php if ($batasLama !== '' && $batasLama !== '0000-00-00'): ?>
+      Pengenalan lewat UUID saja berakhir <strong><?= e(format_tanggal_indonesia($batasLama)) ?></strong>; setelah itu perangkat yang belum termigrasi perlu direset.
+    <?php else: ?>
+      Belum ada batas waktu: atur "Batas pengenalan perangkat lama" di Pengaturan bila sebagian besar sudah termigrasi.
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
 <div class="tbl-card">
   <div class="tbl-head d-flex flex-wrap justify-content-between align-items-center gap-2">
     <div>

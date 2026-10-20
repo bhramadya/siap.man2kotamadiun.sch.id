@@ -20,6 +20,7 @@ try {
     $saya = null;
     if (!empty($settings['device_binding_aktif']) && $uuid !== '' && is_valid_install_uuid($uuid)) {
         $b = cari_binding_perangkat($uuid);
+        migrasi_pasif_perangkat($b, $uuid);   // HP asli memakai halaman ini setiap dibuka -> migrasi binding lama
         if ($b && $b['status'] === 'ACTIVE') {
             $st = $db->prepare("SELECT id, nama, kelas FROM siswa WHERE id = :id AND status = 'aktif'");
             $st->execute([':id' => $b['siswa_id']]);

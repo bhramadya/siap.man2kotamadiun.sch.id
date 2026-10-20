@@ -43,3 +43,24 @@ SET @sql := (SELECT IF(COUNT(*) = 0,
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_bindings' AND COLUMN_NAME = 'secret_hash');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 5) device_bindings.secret_aktif_at: NULL = rahasia baru menunggu konfirmasi (UUID masih diterima),
+--    terisi = hanya cookie. Rahasia yang sudah ada sebelum kolom ini dianggap aktif.
+SET @perlu_aktif := (SELECT COUNT(*) = 0 FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_bindings' AND COLUMN_NAME = 'secret_aktif_at');
+SET @sql := IF(@perlu_aktif,
+    'ALTER TABLE device_bindings ADD COLUMN secret_aktif_at DATETIME NULL DEFAULT NULL AFTER secret_hash',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+-- Hanya saat kolom BARU dibuat (aman dijalankan ulang: baris "menunggu" tidak ikut diaktifkan).
+UPDATE device_bindings SET secret_aktif_at = COALESCE(registered_at, NOW())
+  WHERE @perlu_aktif = 1 AND secret_hash IS NOT NULL;
+
+-- 6) settings.device_legacy_until: batas tanggal pengenalan perangkat lama lewat UUID saja (opsional).
+--    Dibiarkan KOSONG (tanpa batas); sekolah menentukan sendiri tanggalnya di Pengaturan.
+SET @sql := (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE settings ADD COLUMN device_legacy_until DATE NULL DEFAULT NULL',
+    'SELECT 1')
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = 'device_legacy_until');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

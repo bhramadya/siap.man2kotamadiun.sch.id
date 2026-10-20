@@ -245,6 +245,11 @@ function proses_simpan_presensi(int $siswaId, string $gateToken, string $install
     // 11. Security log
     security_log($siswaId, 'PRESENCE_SUCCESS', build_device_hash($installUuid), "Presensi $statusPresensi jam $jam");
 
+    // 12. Presensi berhasil penuh -> baru sekarang binding lama diberi rahasia server / dikonfirmasi.
+    if (!empty($settings['device_binding_aktif']) && $deviceResult['code'] === 'MATCH') {
+        selesaikan_migrasi_perangkat($siswaId, $installUuid);
+    }
+
     return [
         'success' => true,
         'code' => 'OK',

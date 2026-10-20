@@ -235,8 +235,19 @@ halaman internal.
   cukup untuk presensi atas nama siswa lain.
 - Browser/WebView tetap membuat **UUID acak** di `localStorage` + cookie (`assets/js/device.js`); server menyimpan
   `device_hash` = `sha256('v2|' + uuid)` untuk referensi, mencegah satu UUID dipakai dua siswa, dan untuk migrasi.
-- **Migrasi mulus:** perangkat yang terdaftar sebelum upgrade (belum punya `secret_hash`) masih dikenali dari UUID
-  **satu kali**, lalu langsung diikat ke rahasia server pada presensi berikutnya. Siswa tidak perlu daftar ulang.
+- **Migrasi perangkat lama (dua tahap), siswa tidak perlu daftar ulang:**
+  1. Perangkat yang terdaftar sebelum upgrade (belum punya `secret_hash`) masih dikenali dari UUID.
+  2. Rahasia server dikirim ke HP itu **setelah presensi berhasil penuh** (lolos cek presensi ganda, jam, hari libur,
+     GPS), atau saat HP membuka beranda / cek perangkat (`api/beranda`, `api/cek_perangkat`) dan tidak membawa cookie
+     milik perangkat lain. Presensi yang **ditolak tidak pernah** mengganti kunci. Status binding: *menunggu*
+     (UUID **dan** cookie masih diterima, jadi HP asli tidak terkunci bila orang lain sempat mengambil cookie lewat
+     beranda, atau bila WebView kehilangan cookie).
+  3. Begitu cookie baru dipakai dalam **presensi yang berhasil**, status menjadi *aktif* dan UUID saja tidak
+     diterima lagi.
+  - **Batas masa transisi (opsional):** Pengaturan → *Batas pengenalan perangkat lama* (`settings.device_legacy_until`).
+    Kosong (bawaan) = tanpa batas. Bila diisi dan tanggalnya lewat, perangkat yang belum *aktif* tidak dikenali lagi
+    dari UUID dan harus direset admin. Tanggalnya ditentukan sekolah; jumlah perangkat yang belum termigrasi tampil
+    di **Manajemen Perangkat**.
 - **User-Agent TIDAK ikut di-hash** (UA berubah setiap Chrome/WebView ter-update).
 **Aturan**
 - 1 siswa = 1 perangkat (`UNIQUE(siswa_id)`), dan 1 perangkat = 1 siswa (`UNIQUE(device_hash)`).
@@ -253,15 +264,17 @@ halaman internal.
   tercatat di `security_logs`.
 
 **Migrasi dari versi lama**
-Jalankan `database/migration_device_hash_v2.sql` sekali (abaikan "Duplicate key name").
-Siswa yang sudah terdaftar **tidak perlu daftar ulang**. Baris tanpa `device_uuid`
-(seharusnya tidak ada) perlu direset lalu didaftarkan ulang.
+Hash skema lama (v1 = UUID + User-Agent) dimigrasikan otomatis ke v2 lewat kolom `device_uuid`; tidak ada file SQL
+terpisah. Siswa yang sudah terdaftar **tidak perlu daftar ulang**. Baris tanpa `device_uuid` (seharusnya tidak ada)
+perlu direset lalu didaftarkan ulang.
 
 **Keterbatasan (jujur)**
 Ini bukan hardware ID permanen. Bila siswa menghapus cookie/data browser, memakai incognito, ganti browser, atau ganti
 HP, rahasianya hilang dan perangkat **tidak cocok lagi** (admin perlu mereset perangkat siswa itu). Pemilik HP yang
 sengaja mengekspor cookie-nya sendiri ke HP teman masih bisa menitip absen; karena itu tetap aktifkan GPS dan QR kelas
-bertanda waktu. Selama masa migrasi, binding lama yang belum diikat masih bisa diklaim dengan UUID yang disalin (sekali).
+bertanda waktu. Selama masa transisi, orang yang menyalin UUID perangkat yang belum *aktif* masih bisa presensi atas
+nama siswa itu (seperti sebelum pembaruan) dan, bila presensinya berhasil penuh, mengambil alih binding; isi batas masa
+transisi setelah sebagian besar perangkat termigrasi.
 
 **QR Kelas: permanen atau bertanda waktu** (Pengaturan → *QR Kelas permanen*)
 - **Mati (bawaan instalasi baru, disarankan):** isi QR kelas adalah token `k1.<id>.<kedaluwarsa>.<hmac>` yang
@@ -429,6 +442,7 @@ Lakukan berurutan, **sebelum** menimpa kode lama:
 5. **GPS & QR Kelas**: upgrade **tidak** mengubah pengaturan GPS maupun QR kelas yang sudah ada. Dashboard menampilkan
    peringatan merah bila GPS nonaktif atau QR Kelas masih permanen; aktifkan GPS (dengan koordinat sekolah) dan matikan
    "QR Kelas permanen" di Pengaturan bila layar kelas sudah siap.
-6. **Perangkat siswa**: tidak ada yang perlu dilakukan. Pada presensi pertama setelah upgrade, setiap perangkat yang
-   sudah terdaftar otomatis diikat ke cookie rahasia server (`SIAP_PERANGKAT`). Siswa yang setelah itu menghapus
-   cookie browser perlu direset perangkatnya oleh admin.
+6. **Perangkat siswa**: tidak ada yang perlu dilakukan siswa. Saat HP membuka beranda atau presensi berhasil, perangkat
+   yang sudah terdaftar otomatis diikat ke cookie rahasia server (`SIAP_PERANGKAT`), lihat bagian 8. Pantau jumlah yang
+   belum termigrasi di Manajemen Perangkat, lalu (opsional) isi *Batas pengenalan perangkat lama* di Pengaturan.
+   Siswa yang menghapus cookie browser setelah perangkatnya *aktif* perlu direset perangkatnya oleh admin.

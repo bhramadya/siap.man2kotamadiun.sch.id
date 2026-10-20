@@ -37,6 +37,7 @@ CREATE TABLE `device_bindings` (
   `device_uuid` varchar(64) DEFAULT NULL COMMENT 'UUID mentah utk referensi (opsional, boleh NULL demi privasi)',
   `device_hash` varchar(64) NOT NULL COMMENT 'sha256 dari device identifier',
   `secret_hash` char(64) DEFAULT NULL COMMENT 'sha256 dari rahasia perangkat yang diterbitkan server (cookie HttpOnly SIAP_PERANGKAT)',
+  `secret_aktif_at` datetime DEFAULT NULL COMMENT 'NULL = rahasia menunggu konfirmasi (UUID masih diterima); terisi = hanya cookie',
   `device_name` varchar(100) DEFAULT NULL,
   `browser` varchar(100) DEFAULT NULL,
   `os` varchar(100) DEFAULT NULL,
@@ -119,7 +120,8 @@ CREATE TABLE `settings` (
   `device_wajib_kode` tinyint(1) NOT NULL DEFAULT '0',
   `portal_siswa_aktif` tinyint(1) NOT NULL DEFAULT '1',
   `qr_kelas_permanen` tinyint(1) NOT NULL DEFAULT '0' COMMENT '1 = QR kelas permanen (boleh dicetak), 0 = token bertanda waktu (HMAC)',
-  `kunci_rahasia` varchar(128) DEFAULT NULL COMMENT 'kunci HMAC server bila app_secret tidak diisi di config/database.local.php'
+  `kunci_rahasia` varchar(128) DEFAULT NULL COMMENT 'kunci HMAC server bila app_secret tidak diisi di config/database.local.php',
+  `device_legacy_until` date DEFAULT NULL COMMENT 'setelah tanggal ini perangkat lama tidak dikenali dari UUID saja; NULL = tanpa batas'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `siswa` (

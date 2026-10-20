@@ -64,6 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($punyaKode) $setIdentitas .= 'device_wajib_kode=:wajibkode, ';
     $punyaQrKelas = array_key_exists('qr_kelas_permanen', $settings);
     if ($punyaQrKelas) $setIdentitas .= 'qr_kelas_permanen=:qrkelasperm, ';
+    $punyaBatasLama = array_key_exists('device_legacy_until', $settings);
+    $batasLamaInput = trim((string) ($_POST['device_legacy_until'] ?? ''));
+    $batasLama = ($batasLamaInput !== '' && DateTime::createFromFormat('!Y-m-d', $batasLamaInput)) ? $batasLamaInput : null;
+    if ($punyaBatasLama) $setIdentitas .= 'device_legacy_until=:bataslama, ';
     $stmt = $db->prepare(
         'UPDATE settings SET ' . ($punyaHari ? 'hari_efektif=:hari, ' : '') . $setIdentitas . 'nama_sekolah=:nama, logo=:logo, tahun_pelajaran=:tahun, jam_masuk=:jam, batas_terlambat=:batas,
          latitude_sekolah=:lat, longitude_sekolah=:lng, radius_meter=:radius, gps_aktif=:gps, validasi_ip_aktif=:ipval,
@@ -92,7 +96,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ] + ($punyaHari ? [':hari' => implode(',', $hariPilih)] : [])
       + array_combine(array_map(fn($k) => ":$k", array_keys($identitas)), array_values($identitas))
       + ($punyaKode ? [':wajibkode' => isset($_POST['device_wajib_kode']) ? 1 : 0] : [])
-      + ($punyaQrKelas ? [':qrkelasperm' => isset($_POST['qr_kelas_permanen']) ? 1 : 0] : []));
+      + ($punyaQrKelas ? [':qrkelasperm' => isset($_POST['qr_kelas_permanen']) ? 1 : 0] : [])
+      + ($punyaBatasLama ? [':bataslama' => $batasLama] : []));
 
     catat_aktivitas('UBAH', 'pengaturan', 'Menyimpan pengaturan sistem');
     set_flash('success', 'Pengaturan berhasil disimpan.');
@@ -119,6 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'device_binding_aktif' => isset($_POST['device_binding_aktif']) ? 1 : 0,
         'device_wajib_kode' => isset($_POST['device_wajib_kode']) ? 1 : 0,
         'qr_kelas_permanen' => isset($_POST['qr_kelas_permanen']) ? 1 : 0,
+        'device_legacy_until' => clean($_POST['device_legacy_until'] ?? ''),
         'qr_dinamis_durasi_detik' => (int) ($_POST['qr_dinamis_durasi_detik'] ?? 120),
         'maks_reset_device_per_bulan' => (int) ($_POST['maks_reset_device_per_bulan'] ?? 2),
         'log_retensi_hari' => (int) ($_POST['log_retensi_hari'] ?? 0),
@@ -296,6 +302,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <input type="number" name="qr_dinamis_durasi_detik" class="form-control" value="<?= e($settings['qr_dinamis_durasi_detik']) ?>">
         <small class="text-muted">QR yang ditampilkan di monitor sekolah berganti otomatis setiap durasi ini.</small>
       </div>
+      <?php if (array_key_exists('device_legacy_until', $settings)): ?>
+      <div class="col-md-6">
+        <label class="form-label">Batas pengenalan perangkat lama (opsional)</label>
+        <input type="date" name="device_legacy_until" class="form-control" value="<?= e((string) ($settings['device_legacy_until'] ?? '')) ?>">
+        <small class="text-muted">Perangkat yang terdaftar sebelum pembaruan keamanan masih dikenali dari UUID saja sampai termigrasi ke cookie rahasia server. Setelah tanggal ini, pengenalan lewat UUID dihentikan dan perangkat yang belum termigrasi harus direset admin. Kosongkan = tanpa batas. Lihat jumlah yang belum termigrasi di Manajemen Perangkat.</small>
+      </div>
+      <?php endif; ?>
       <div class="col-md-6">
         <label class="form-label">Maksimal Reset Perangkat per Siswa / Bulan</label>
         <input type="number" name="maks_reset_device_per_bulan" class="form-control" value="<?= e($settings['maks_reset_device_per_bulan']) ?>">
