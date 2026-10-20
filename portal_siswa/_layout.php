@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 /** Kerangka HTML portal siswa (dipakai semua halaman portal). */
 
 function portal_head(string $judul): void

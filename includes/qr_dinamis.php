@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * QR DINAMIS — GERBANG SEKOLAH & KELAS (Model B)
  * Token berganti berkala. Ditampilkan di layar/monitor (gerbang ATAU kelas),

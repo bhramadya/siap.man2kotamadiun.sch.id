@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 // /portal/izin/baru — formulir pengajuan izin/sakit
 $akun = portal_wajib_login();
 $sid = (int) $akun['siswa_id'];

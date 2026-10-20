@@ -161,10 +161,53 @@ Semua dilayani `index.php` (front controller) lewat aturan di `.htaccess`.
 - Peta rute ada di satu tempat: konstanta `RUTE_MODUL` di `includes/functions.php`. Untuk membuat tautan **selalu**
   pakai `modul_url('nama_modul', ['param' => 'nilai'])`; jangan menempelkan `&param=...` secara manual.
 - Jangan membuat rute berawalan nama folder nyata (`api`, `assets`, `config`, `includes`, `panel`, `presensi`, `uploads`, `database`).
-- Server **Apache/LiteSpeed** (aaPanel default) cukup memakai `.htaccess` bawaan. Untuk **Nginx**, tambahkan:
-  ```nginx
-  location / { try_files $uri $uri/ $uri.php /index.php?$query_string; }
-  ```
+- Server **Apache/LiteSpeed** (aaPanel default) cukup memakai `.htaccess` bawaan. **Nginx mengabaikan `.htaccess`**,
+  jadi semua perlindungan folder harus ditulis di konfigurasi situs (lihat blok di bawah).
+
+**Konfigurasi Nginx lengkap** (aaPanel → Website → Conf / URL rewrite). Sesuaikan `root` dan `fastcgi_pass`:
+
+```nginx
+server {
+    # listen, server_name, ssl_certificate ... (biarkan seperti buatan aaPanel)
+    root  /www/wwwroot/siap.man2kotamadiun.sch.id;
+    index index.php;
+
+    # 1) Folder internal: tidak boleh dibuka dari browser (dipakai PHP lewat filesystem saja)
+    location ~ ^/(config|includes|database|portal_siswa)(/|$) { deny all; return 404; }
+
+    # 2) Berkas sensitif di mana pun: dump SQL, dokumentasi, .htaccess/.user.ini/.git, backup
+    location ~* \.(sql|md|ini|log|bak|sh)$ { deny all; return 404; }
+    location ~ /\.(?!well-known/) { deny all; return 404; }
+
+    # 3) Unggahan: surat izin/dokter (data kesehatan) ditolak total; folder lain hanya berkas statis,
+    #    PHP TIDAK PERNAH dieksekusi di bawah /uploads/
+    location ^~ /uploads/izin/ { deny all; return 404; }
+    location ^~ /uploads/ {
+        location ~ \.(php|phtml|phar|php\d)$ { deny all; return 404; }
+    }
+
+    # 4) URL bersih: /login -> login.php, /siswa/123 -> index.php (router)
+    location / { try_files $uri $uri/ @siap; }
+    location @siap {
+        if (-f $document_root$uri.php) { rewrite ^ $uri.php last; }
+        rewrite ^ /index.php last;
+    }
+
+    # 5) PHP
+    location ~ \.php$ {
+        try_files $uri =404;
+        fastcgi_pass unix:/tmp/php-cgi-82.sock;   # sesuaikan versi PHP aaPanel
+        fastcgi_index index.php;
+        include fastcgi.conf;
+    }
+}
+```
+
+Jangan memakai `try_files ... $uri.php ...` langsung di `location /`: Nginx akan mengirim isi file PHP sebagai teks.
+Setelah import, **hapus `database/database.sql` dari server produksi** (cukup simpan di komputer admin). Selain aturan
+server, setiap file di `includes/`, `config/`, `panel/`, dan `portal_siswa/` juga menolak dibuka langsung dari PHP-nya
+sendiri (pemeriksaan `APP_ROUTER` / `SCRIPT_FILENAME`), jadi kesalahan konfigurasi server tidak langsung membuka
+halaman internal.
 
 ---
 
@@ -289,7 +332,7 @@ belum ada WhatsApp/email. Maksimal 100 notifikasi terbaru per siswa disimpan.
 hapus lampiran lama). **Tidak diberikan otomatis ke Operator**, jadi centang untuk petugas piket di menu Hak Akses.
 
 **Lampiran = data kesehatan.** Disimpan di `uploads/izin/` dengan nama acak, **tidak bisa dibuka langsung dari web**
-(`.htaccess` menolak; pada **Nginx** tambahkan `location ^~ /uploads/izin/ { deny all; }`), hanya lewat skrip yang
+(`.htaccess` menolak; pada **Nginx** pakai blok lengkap di bagian 6), hanya lewat skrip yang
 memeriksa hak akses: pemilik pengajuan dan petugas ber-izin `izin.lihat`. PDF dikirim sebagai unduhan, gambar
 dengan `nosniff` + CSP. Setiap pembukaan lampiran oleh petugas dicatat di **Log Keamanan**
 (`IZIN_LAMPIRAN_DILIHAT`). Tombol **Hapus lampiran lama** (halaman Pengajuan Izin) menghapus berkas dari
@@ -319,7 +362,10 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
 - Validasi & sanitasi input; `htmlspecialchars()` pada output.
 - Upload foto: cek MIME asli (`finfo`), batas 2MB, nama file di-generate ulang.
 - `uploads/` tidak dapat mengeksekusi PHP; `config/`, `includes/`, `database/` dilindungi `.htaccess`;
-  file `.sql` dan `.md` tidak dapat diakses dari browser.
+  file `.sql` dan `.md` tidak dapat diakses dari browser. Untuk Nginx gunakan blok lengkap di bagian 6.
+- File internal menolak akses langsung walau aturan server terlewat: `includes/*` dan `config/*` hanya bisa
+  di-include, halaman `panel/*` dan `portal_siswa/*` hanya jalan lewat router (`APP_ROUTER`). Endpoint lampiran
+  izin memeriksa login + izin `izin.lihat` sendiri (petugas) atau kepemilikan pengajuan (siswa).
 - **Izin per role ditegakkan di `require_login()`** (`includes/auth.php`) untuk semua jalur
   (router maupun akses langsung ke `/panel/xxx.php`).
 - **Pembatas login:** 5 gagal per username atau 20 gagal per IP dalam 15 menit
@@ -354,3 +400,5 @@ Lakukan berurutan, **sebelum** menimpa kode lama:
    - `database/migration_izin.sql` — tabel `izin_pengajuan`, `izin_hari`, `portal_notifikasi`.
    Instalasi baru cukup import `database/database.sql` (sudah berisi semuanya); jangan import ulang file itu ke
    database yang sudah berisi data.
+3. **Nginx**: bila server memakai Nginx, ganti aturan lama dengan blok lengkap di bagian 6, lalu reload Nginx.
+   Hapus `database/*.sql` dari server produksi setelah migrasi.

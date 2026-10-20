@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Manajemen pengguna (admin & operator). Form tambah/edit dimuat sebagai popup (?modal=1).
 $modal = !empty($_REQUEST['modal']);
 if ($modal) {

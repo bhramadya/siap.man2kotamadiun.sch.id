@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * Logika inti proses presensi. Dipakai oleh halaman /presensi dan /api
  * agar validasi TIDAK PERNAH hanya bergantung pada JavaScript di browser.

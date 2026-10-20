@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Kode Pasangan Massal: buat kode pendaftaran perangkat untuk banyak siswa sekaligus
 // (per kelas / jenjang / semua / daftar NIS-NISN), lalu cetak, unduh, atau salin untuk dibagikan.
 require_once __DIR__ . '/../includes/header.php';

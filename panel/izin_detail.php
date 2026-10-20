@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 /** Tinjau satu pengajuan izin/sakit: baca alasan & lampiran, lalu setujui / tolak / cabut. */
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/izin.php';

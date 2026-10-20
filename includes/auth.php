@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * Session bootstrap + guard akses admin.
  * Wajib di-include paling atas pada setiap halaman admin.

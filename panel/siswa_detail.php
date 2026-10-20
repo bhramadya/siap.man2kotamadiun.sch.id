@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Detail siswa — URL: /siswa/{nis}  (router mengisi $_GET['id'] dari NIS)
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/device_binding.php';

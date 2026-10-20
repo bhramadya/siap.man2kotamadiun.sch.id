@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 require_once __DIR__ . '/../includes/header.php';
 
 $db = getDB();

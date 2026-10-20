@@ -1,4 +1,5 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * Fungsi-fungsi bantu umum yang dipakai di seluruh aplikasi.
  */

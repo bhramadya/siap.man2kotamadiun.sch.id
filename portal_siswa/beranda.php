@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 // /portal — beranda siswa: profil, kehadiran bulan ini, riwayat, perangkat
 require_once __DIR__ . '/../includes/device_binding.php';
 $akun = portal_wajib_login();
