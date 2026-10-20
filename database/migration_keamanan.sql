@@ -17,3 +17,20 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 -- (Akun lain yang login dengan password bawaan juga otomatis ditandai saat login.)
 UPDATE users SET must_change_password = 1
   WHERE password = '$2b$10$b41vg2ko8zqtu.jWTfT48eXiFP5YLFg8U8IxUn7HI76kcI5upq7Ha';
+
+-- 2) settings.qr_kelas_permanen: instalasi LAMA diberi 1 (poster QR kelas yang sudah ditempel tetap berlaku).
+--    Matikan di Pengaturan agar QR kelas memakai token bertanda waktu (HMAC). GPS TIDAK diubah oleh migrasi ini.
+SET @sql := (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE settings ADD COLUMN qr_kelas_permanen TINYINT(1) NOT NULL DEFAULT 1',
+    'SELECT 1')
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = 'qr_kelas_permanen');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 3) settings.kunci_rahasia: kunci HMAC server bila app_secret tidak diisi (diisi otomatis oleh aplikasi).
+SET @sql := (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE settings ADD COLUMN kunci_rahasia VARCHAR(128) NULL',
+    'SELECT 1')
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = 'kunci_rahasia');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

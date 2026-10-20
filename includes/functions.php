@@ -518,6 +518,10 @@ function get_settings(): array
                 'alamat_sekolah' => 'TEXT NULL',
                 'nama_kepala'    => 'VARCHAR(150) NULL',
                 'portal_siswa_aktif' => 'TINYINT(1) NOT NULL DEFAULT 1',
+                // 1 = QR kelas permanen (boleh dicetak). Instalasi lama mendapat 1 agar poster yang sudah
+                // ditempel tetap berlaku; instalasi baru (database.sql) memakai 0 = QR bertanda waktu.
+                'qr_kelas_permanen' => 'TINYINT(1) NOT NULL DEFAULT 1',
+                'kunci_rahasia'  => 'VARCHAR(128) NULL',
             ];
             $berubah = false;
             foreach ($kolomBaru as $kolom => $definisi) {
@@ -535,6 +539,52 @@ function get_settings(): array
         }
     }
     return $settings;
+}
+
+/**
+ * Kunci rahasia server untuk tanda tangan HMAC (QR kelas, dsb.). Urutan: app_secret di
+ * config/database.local.php -> settings.kunci_rahasia (dibuat acak sekali lalu disimpan).
+ */
+function kunci_rahasia_server(): string
+{
+    static $kunci = null;
+    if ($kunci !== null) return $kunci;
+    if (defined('APP_SECRET') && strlen((string) APP_SECRET) >= 32) return $kunci = (string) APP_SECRET;
+    $s = get_settings();
+    if (!empty($s['kunci_rahasia']) && strlen((string) $s['kunci_rahasia']) >= 32) return $kunci = (string) $s['kunci_rahasia'];
+    try {
+        $db = getDB();
+        $db->prepare("UPDATE settings SET kunci_rahasia = :k WHERE id = :id AND (kunci_rahasia IS NULL OR kunci_rahasia = '')")
+           ->execute([':k' => bin2hex(random_bytes(32)), ':id' => $s['id'] ?? 1]);
+        $st = $db->prepare('SELECT kunci_rahasia FROM settings WHERE id = :id');   // baca ulang: aman bila dua request bersamaan
+        $st->execute([':id' => $s['id'] ?? 1]);
+        $v = (string) $st->fetchColumn();
+        if (strlen($v) >= 32) return $kunci = $v;
+    } catch (Throwable $e) {
+        error_log('kunci_rahasia_server: ' . $e->getMessage());
+    }
+    // Cadangan terakhir (kolom tidak bisa dibuat): tetap stabil per instalasi, tetapi isi app_secret!
+    error_log('SIAP: app_secret belum diatur dan settings.kunci_rahasia tidak tersedia.');
+    return $kunci = hash('sha256', 'siap|' . DB_HOST . '|' . DB_NAME . '|' . DB_USER . '|' . DB_PASS . '|' . __DIR__);
+}
+
+/**
+ * Peringatan konfigurasi presensi yang melemahkan anti-titip-absen (ditampilkan di Dashboard &
+ * Pengaturan untuk pengelola pengaturan). Teks berupa HTML statis dari kode ini.
+ */
+function peringatan_keamanan_presensi(): array
+{
+    $s = get_settings();
+    $w = [];
+    if (empty($s['gps_aktif'])) {
+        $w[] = '<strong>Validasi lokasi GPS nonaktif.</strong> Presensi bisa dilakukan dari luar sekolah (mis. dari foto QR yang dibagikan di grup). Aktifkan di Pengaturan &rarr; Geolocation / GPS.';
+    } elseif ((string) ($s['latitude_sekolah'] ?? '') === '-7.1234567' && (string) ($s['longitude_sekolah'] ?? '') === '111.1234567') {
+        $w[] = '<strong>Koordinat sekolah masih nilai contoh.</strong> Semua presensi akan ditolak "di luar area sekolah". Isi koordinat asli di Pengaturan &rarr; Geolocation / GPS.';
+    }
+    if (!array_key_exists('qr_kelas_permanen', $s) || (int) $s['qr_kelas_permanen'] === 1) {
+        $w[] = '<strong>QR Kelas masih mode permanen.</strong> Foto QR kelas yang tersebar tetap bisa dipakai selamanya. Matikan "QR Kelas permanen" di Pengaturan agar QR kelas memakai token bertanda waktu (tampilkan di layar kelas).';
+    }
+    return $w;
 }
 
 const NAMA_HARI = [1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat', 6 => 'Sabtu', 7 => 'Minggu'];

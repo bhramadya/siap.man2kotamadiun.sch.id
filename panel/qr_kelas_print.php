@@ -5,6 +5,13 @@ require_login();
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/qr_dinamis.php';
 
+// Mode QR kelas bertanda waktu: poster cetak akan kedaluwarsa dalam hitungan menit -> tidak dicetak.
+if (!qr_kelas_permanen()) {
+    set_flash('warning', 'QR Kelas memakai token bertanda waktu sehingga tidak bisa dicetak. Tampilkan QR kelas di layar, atau aktifkan "QR Kelas permanen" di Pengaturan.');
+    header('Location: ' . modul_url('qr_kelas'));
+    exit;
+}
+
 $db = getDB();
 $settings = get_settings();
 $kelasFilter = clean($_GET['kelas'] ?? '');

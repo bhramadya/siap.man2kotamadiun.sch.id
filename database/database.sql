@@ -102,7 +102,7 @@ CREATE TABLE `settings` (
   `latitude_sekolah` decimal(10,7) DEFAULT NULL,
   `longitude_sekolah` decimal(10,7) DEFAULT NULL,
   `radius_meter` int UNSIGNED NOT NULL DEFAULT '100',
-  `gps_aktif` tinyint(1) NOT NULL DEFAULT '0',
+  `gps_aktif` tinyint(1) NOT NULL DEFAULT '1',
   `validasi_ip_aktif` tinyint(1) NOT NULL DEFAULT '0',
   `device_binding_aktif` tinyint(1) NOT NULL DEFAULT '1',
   `qr_dinamis_durasi_detik` int UNSIGNED NOT NULL DEFAULT '120',
@@ -116,7 +116,9 @@ CREATE TABLE `settings` (
   `alamat_sekolah` text,
   `nama_kepala` varchar(150) DEFAULT NULL,
   `device_wajib_kode` tinyint(1) NOT NULL DEFAULT '0',
-  `portal_siswa_aktif` tinyint(1) NOT NULL DEFAULT '1'
+  `portal_siswa_aktif` tinyint(1) NOT NULL DEFAULT '1',
+  `qr_kelas_permanen` tinyint(1) NOT NULL DEFAULT '0' COMMENT '1 = QR kelas permanen (boleh dicetak), 0 = token bertanda waktu (HMAC)',
+  `kunci_rahasia` varchar(128) DEFAULT NULL COMMENT 'kunci HMAC server bila app_secret tidak diisi di config/database.local.php'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `siswa` (
@@ -338,9 +340,11 @@ INSERT INTO `users` (`nama`, `username`, `password`, `role`, `status`, `must_cha
 
 INSERT INTO `settings`
   (`nama_sekolah`, `tahun_pelajaran`, `jam_masuk`, `batas_terlambat`,
-   `latitude_sekolah`, `longitude_sekolah`, `radius_meter`, `gps_aktif`)
+   `latitude_sekolah`, `longitude_sekolah`, `radius_meter`, `gps_aktif`, `qr_kelas_permanen`)
 VALUES
   ('SMA Negeri 1 Contoh', '2026/2027', '07:00:00', '07:15:00',
-   -7.1234567, 111.1234567, 100, 0);
+   -7.1234567, 111.1234567, 100, 1, 0);
+-- GPS AKTIF secara bawaan: ganti koordinat contoh di atas dengan koordinat sekolah (menu Pengaturan)
+-- sebelum dipakai, karena presensi di luar radius ditolak.
 
 SET FOREIGN_KEY_CHECKS = 1;

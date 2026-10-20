@@ -217,8 +217,9 @@ halaman internal.
   penggantian password**: semua halaman panel dialihkan ke Profil sampai password baru disimpan (kolom
   `users.must_change_password`). Akun mana pun yang login dengan password bawaan (mis. `admin123`) ikut ditandai.
 - Tidak ada data siswa bawaan; tambahkan lewat Data Siswa atau Import.
-- **Pengaturan awal:** jam masuk `07:00`, batas terlambat `07:15`, GPS nonaktif,
-  validasi IP nonaktif, Device Binding **aktif**, QR gerbang 120 detik,
+- **Pengaturan awal:** jam masuk `07:00`, batas terlambat `07:15`, **GPS aktif** (koordinat contoh — **wajib
+  diganti** dengan koordinat sekolah di Pengaturan, karena presensi di luar radius ditolak), QR Kelas **bertanda
+  waktu** (bukan permanen), validasi IP nonaktif, Device Binding **aktif**, QR gerbang 120 detik,
   maksimal reset perangkat 2x/bulan per siswa, hari efektif Senin–Jumat.
 - Retensi Log Keamanan bisa diatur di Pengaturan (0 = tidak pernah dihapus otomatis).
 
@@ -259,6 +260,15 @@ Siswa yang sudah terdaftar **tidak perlu daftar ulang**. Baris tanpa `device_uui
 Ini bukan hardware ID permanen. Perangkat dianggap baru bila siswa menghapus data aplikasi/browser
 (localStorage **dan** cookie), memakai incognito, ganti browser, atau ganti HP. Untuk keamanan
 lebih kuat, gabungkan dengan QR dinamis gerbang, GPS/geofencing, dan validasi IP.
+
+**QR Kelas: permanen atau bertanda waktu** (Pengaturan → *QR Kelas permanen*)
+- **Mati (bawaan instalasi baru, disarankan):** isi QR kelas adalah token `k1.<id>.<kedaluwarsa>.<hmac>` yang
+  ditandatangani server (HMAC-SHA256, kunci `app_secret` atau `settings.kunci_rahasia`) dan berlaku sebesar durasi QR
+  gerbang + 3 menit. Halaman QR kelas memuat ulang sendiri, jadi tampilkan di layar/proyektor kelas. Foto QR yang
+  dibagikan cepat kedaluwarsa; tombol cetak disembunyikan dan poster lama tidak berlaku.
+- **Hidup (perilaku lama):** QR kelas tetap dan boleh dicetak. Instalasi lama otomatis berada di mode ini setelah
+  upgrade agar poster yang sudah ditempel tidak mendadak mati; Dashboard dan Pengaturan menampilkan peringatan merah
+  sampai mode ini dimatikan. Peringatan yang sama muncul bila validasi GPS nonaktif.
 
 ---
 
@@ -414,3 +424,6 @@ Lakukan berurutan, **sebelum** menimpa kode lama:
    Hapus `database/*.sql` dari server produksi setelah migrasi.
 4. **Password admin bawaan**: setiap akun yang masih memakai password bawaan akan dipaksa menggantinya saat login
    berikutnya (menu lain terkunci sampai password diganti).
+5. **GPS & QR Kelas**: upgrade **tidak** mengubah pengaturan GPS maupun QR kelas yang sudah ada. Dashboard menampilkan
+   peringatan merah bila GPS nonaktif atau QR Kelas masih permanen; aktifkan GPS (dengan koordinat sekolah) dan matikan
+   "QR Kelas permanen" di Pengaturan bila layar kelas sudah siap.

@@ -4,6 +4,16 @@ require_once __DIR__ . '/../includes/header.php';
 
 $db = getDB();
 
+// Peringatan pengaturan anti-titip-absen yang lemah (GPS mati, QR kelas permanen) untuk pengelola pengaturan.
+if (can('pengaturan.kelola')) {
+    foreach (peringatan_keamanan_presensi() as $peringatan): ?>
+<a class="alert alert-danger d-flex align-items-center gap-2 text-decoration-none mb-3" href="<?= e(modul_url('pengaturan')) ?>">
+  <i class="bi bi-shield-exclamation fs-5"></i>
+  <span><?= $peringatan /* HTML statis dari kode */ ?></span>
+</a>
+<?php endforeach;
+}
+
 // Pengingat untuk petugas piket: ada pengajuan izin/sakit yang menunggu keputusan.
 if (can_modul('izin')) {
     require_once __DIR__ . '/../includes/izin.php';
