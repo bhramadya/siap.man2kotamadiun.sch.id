@@ -228,15 +228,16 @@ halaman internal.
 ## 8. DEVICE BINDING (Poin Penting)
 
 **Identitas perangkat**
-- Browser/WebView membuat **UUID acak** sekali, disimpan di `localStorage` **dan cookie**
-  (400 hari) sebagai cadangan; salah satu yang hilang dipulihkan dari yang lain
-  (`assets/js/device.js`).
-- Server menyimpan **hash SHA-256** dari UUID (`device_hash` = `sha256('v2|' + uuid)`),
-  dibandingkan saat presensi.
-- **User-Agent TIDAK ikut di-hash.** UA berubah setiap Chrome/Android System WebView
-  ter-update (mis. `154.0.8037.106` → `.107`); jika ikut di-hash, perangkat sah
-  akan dianggap "belum terdaftar". Skema lama (v1 = UUID + UA) dimigrasikan otomatis.
-
+- **Bukti utama = rahasia dari server.** Saat perangkat didaftarkan (otomatis, Kode Pasangan, atau QR Pasangan),
+  server membuat rahasia acak 256-bit dan menyimpannya di cookie **`SIAP_PERANGKAT`** (`HttpOnly`, `SameSite=Lax`,
+  `Secure` di HTTPS, 400 hari dan diperpanjang setiap presensi). Database hanya menyimpan hash-nya
+  (`device_bindings.secret_hash`). Skrip di halaman tidak bisa membaca cookie ini, dan menyalin UUID saja tidak lagi
+  cukup untuk presensi atas nama siswa lain.
+- Browser/WebView tetap membuat **UUID acak** di `localStorage` + cookie (`assets/js/device.js`); server menyimpan
+  `device_hash` = `sha256('v2|' + uuid)` untuk referensi, mencegah satu UUID dipakai dua siswa, dan untuk migrasi.
+- **Migrasi mulus:** perangkat yang terdaftar sebelum upgrade (belum punya `secret_hash`) masih dikenali dari UUID
+  **satu kali**, lalu langsung diikat ke rahasia server pada presensi berikutnya. Siswa tidak perlu daftar ulang.
+- **User-Agent TIDAK ikut di-hash** (UA berubah setiap Chrome/WebView ter-update).
 **Aturan**
 - 1 siswa = 1 perangkat (`UNIQUE(siswa_id)`), dan 1 perangkat = 1 siswa (`UNIQUE(device_hash)`).
 - Perangkat baru didaftarkan lewat salah satu cara (dibuat admin, sekali pakai):
@@ -257,9 +258,10 @@ Siswa yang sudah terdaftar **tidak perlu daftar ulang**. Baris tanpa `device_uui
 (seharusnya tidak ada) perlu direset lalu didaftarkan ulang.
 
 **Keterbatasan (jujur)**
-Ini bukan hardware ID permanen. Perangkat dianggap baru bila siswa menghapus data aplikasi/browser
-(localStorage **dan** cookie), memakai incognito, ganti browser, atau ganti HP. Untuk keamanan
-lebih kuat, gabungkan dengan QR dinamis gerbang, GPS/geofencing, dan validasi IP.
+Ini bukan hardware ID permanen. Bila siswa menghapus cookie/data browser, memakai incognito, ganti browser, atau ganti
+HP, rahasianya hilang dan perangkat **tidak cocok lagi** (admin perlu mereset perangkat siswa itu). Pemilik HP yang
+sengaja mengekspor cookie-nya sendiri ke HP teman masih bisa menitip absen; karena itu tetap aktifkan GPS dan QR kelas
+bertanda waktu. Selama masa migrasi, binding lama yang belum diikat masih bisa diklaim dengan UUID yang disalin (sekali).
 
 **QR Kelas: permanen atau bertanda waktu** (Pengaturan → *QR Kelas permanen*)
 - **Mati (bawaan instalasi baru, disarankan):** isi QR kelas adalah token `k1.<id>.<kedaluwarsa>.<hmac>` yang
@@ -427,3 +429,6 @@ Lakukan berurutan, **sebelum** menimpa kode lama:
 5. **GPS & QR Kelas**: upgrade **tidak** mengubah pengaturan GPS maupun QR kelas yang sudah ada. Dashboard menampilkan
    peringatan merah bila GPS nonaktif atau QR Kelas masih permanen; aktifkan GPS (dengan koordinat sekolah) dan matikan
    "QR Kelas permanen" di Pengaturan bila layar kelas sudah siap.
+6. **Perangkat siswa**: tidak ada yang perlu dilakukan. Pada presensi pertama setelah upgrade, setiap perangkat yang
+   sudah terdaftar otomatis diikat ke cookie rahasia server (`SIAP_PERANGKAT`). Siswa yang setelah itu menghapus
+   cookie browser perlu direset perangkatnya oleh admin.

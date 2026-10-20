@@ -19,7 +19,7 @@ try {
     // ---- Kenali perangkat (hanya bila binding aktif & perangkat ACTIVE) ----
     $saya = null;
     if (!empty($settings['device_binding_aktif']) && $uuid !== '' && is_valid_install_uuid($uuid)) {
-        $b = get_device_binding_by_hash(build_device_hash($uuid));
+        $b = cari_binding_perangkat($uuid);
         if ($b && $b['status'] === 'ACTIVE') {
             $st = $db->prepare("SELECT id, nama, kelas FROM siswa WHERE id = :id AND status = 'aktif'");
             $st->execute([':id' => $b['siswa_id']]);

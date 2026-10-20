@@ -36,6 +36,7 @@ CREATE TABLE `device_bindings` (
   `siswa_id` int UNSIGNED NOT NULL,
   `device_uuid` varchar(64) DEFAULT NULL COMMENT 'UUID mentah utk referensi (opsional, boleh NULL demi privasi)',
   `device_hash` varchar(64) NOT NULL COMMENT 'sha256 dari device identifier',
+  `secret_hash` char(64) DEFAULT NULL COMMENT 'sha256 dari rahasia perangkat yang diterbitkan server (cookie HttpOnly SIAP_PERANGKAT)',
   `device_name` varchar(100) DEFAULT NULL,
   `browser` varchar(100) DEFAULT NULL,
   `os` varchar(100) DEFAULT NULL,
@@ -161,6 +162,7 @@ ALTER TABLE `device_bindings`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uniq_siswa_device` (`siswa_id`),
   ADD UNIQUE KEY `uniq_device_hash` (`device_hash`),
+  ADD UNIQUE KEY `uniq_device_secret` (`secret_hash`),
   ADD KEY `fk_device_reset_by` (`reset_by`),
   ADD KEY `idx_device_status` (`status`);
 

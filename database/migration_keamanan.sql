@@ -34,3 +34,12 @@ SET @sql := (SELECT IF(COUNT(*) = 0,
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = 'kunci_rahasia');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 4) device_bindings.secret_hash: hash rahasia perangkat dari server (cookie HttpOnly). Binding lama berisi NULL
+--    dan otomatis diikat ulang saat siswa presensi berikutnya (tidak perlu daftar ulang).
+SET @sql := (SELECT IF(COUNT(*) = 0,
+    'ALTER TABLE device_bindings ADD COLUMN secret_hash CHAR(64) NULL DEFAULT NULL AFTER device_hash, ADD UNIQUE KEY uniq_device_secret (secret_hash)',
+    'SELECT 1')
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_bindings' AND COLUMN_NAME = 'secret_hash');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

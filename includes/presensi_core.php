@@ -38,16 +38,17 @@ function identify_siswa_by_token(string $qrToken): ?array
  */
 function identify_siswa_by_device(string $installUuid): ?array
 {
-    if (!is_valid_install_uuid($installUuid)) return null;
-    $hash = build_device_hash($installUuid);
+    // Dikenali dari cookie rahasia server; UUID saja hanya untuk binding lama yang belum diikat.
+    $binding = cari_binding_perangkat($installUuid);
+    if (!$binding) return null;
 
     $stmt = getDB()->prepare(
         'SELECT s.*, db.status AS device_status, db.device_hash
          FROM device_bindings db
          JOIN siswa s ON s.id = db.siswa_id
-         WHERE db.device_hash = :hash LIMIT 1'
+         WHERE db.id = :id LIMIT 1'
     );
-    $stmt->execute([':hash' => $hash]);
+    $stmt->execute([':id' => $binding['id']]);
     return $stmt->fetch() ?: null;
 }
 
@@ -104,7 +105,8 @@ function get_ringkasan_bulanan_siswa(int $siswaId, string $tanggalAcuan): array
 
 /**
  * PROSES UTAMA: validasi menyeluruh + simpan presensi.
- * $installUuid WAJIB dikirim dari klien (localStorage), tidak pernah dipercaya mentah tanpa hashing.
+ * $installUuid dikirim dari klien (localStorage); bukti perangkat yang sesungguhnya adalah cookie
+ * rahasia dari server (lihat includes/device_binding.php), UUID hanya untuk binding lama.
  *
  * Return: ['success'=>bool, 'code'=>string, 'message'=>string, 'data'=>array|null]
  */
