@@ -254,7 +254,7 @@ blokir, buka/tutup portal). Izin ini **tidak** diberikan otomatis ke Operator; b
 
 Alamat lama `/portal/masuk` otomatis dialihkan ke `/login`. File `portal_siswa/masuk.php` dari versi sebelumnya sudah tidak dipakai dan boleh dihapus.
 
-**Instalasi:** tabel dibuat otomatis saat pertama dipakai. Bila akun database tidak punya hak `CREATE`,
+**Instalasi:** sudah termasuk di `database/database.sql`; pada instalasi lama tabel dibuat otomatis saat pertama dipakai. Bila akun database tidak punya hak `CREATE`,
 jalankan `database/migration_akun_siswa.sql` sekali.
 
 **Batas yang perlu diketahui:** sesi PHP berakhir sesuai `session.gc_maxlifetime` server (biasanya ±24 menit tanpa
@@ -348,3 +348,9 @@ Lakukan berurutan, **sebelum** menimpa kode lama:
    `config/database.php` yang lama, lalu buat `config/database.local.php` (salin dari `config/database.example.php`)
    berisi nilai itu. Setelah itu `config/database.php` boleh ditimpa versi baru. Tanpa file lokal, aplikasi memakai
    bawaan `root`/tanpa password dan halaman akan menampilkan 503. Ganti password database yang pernah ikut ter-commit.
+2. **Jalankan migrasi database** (phpMyAdmin → pilih database → Import), berurutan. Semua file aman dijalankan
+   ulang (idempoten) dan sama persis dengan tabel yang dibuat otomatis oleh aplikasi:
+   - `database/migration_akun_siswa.sql` — tabel `siswa_akun`, `portal_attempts`, kolom `settings.portal_siswa_aktif`.
+   - `database/migration_izin.sql` — tabel `izin_pengajuan`, `izin_hari`, `portal_notifikasi`.
+   Instalasi baru cukup import `database/database.sql` (sudah berisi semuanya); jangan import ulang file itu ke
+   database yang sudah berisi data.

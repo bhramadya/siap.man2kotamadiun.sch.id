@@ -4,8 +4,12 @@
 --
 -- CARA PAKAI: buat database kosong (mis. `siapabsen`), pilih database itu di
 -- phpMyAdmin, lalu Import file ini. Nama database harus sama dengan DB_NAME
--- di config/database.php. Tabel tambahan (role_permissions, login_attempts,
--- device_pairing_codes) juga dibuat otomatis oleh aplikasi bila belum ada.
+-- di config/database.local.php. Seluruh tabel portal siswa & pengajuan izin sudah
+-- termasuk di file ini. Tabel tambahan (role_permissions, device_pairing_codes) dibuat
+-- otomatis oleh aplikasi bila belum ada.
+--
+-- UPGRADE instalasi lama: JANGAN import file ini lagi; jalankan file migration_*.sql
+-- (lihat README bagian "Upgrade dari versi sebelumnya").
 --
 -- Akun awal: username `admin`, password `admin123`
 -- PENTING: SEGERA ganti password ini setelah login pertama!
@@ -110,7 +114,9 @@ CREATE TABLE `settings` (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `hari_efektif` varchar(20) NOT NULL DEFAULT '1,2,3,4,5',
   `alamat_sekolah` text,
-  `nama_kepala` varchar(150) DEFAULT NULL
+  `nama_kepala` varchar(150) DEFAULT NULL,
+  `device_wajib_kode` tinyint(1) NOT NULL DEFAULT '0',
+  `portal_siswa_aktif` tinyint(1) NOT NULL DEFAULT '1'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `siswa` (
@@ -244,6 +250,84 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   `created_at` DATETIME NOT NULL,
   INDEX `idx_la_user` (`username`, `created_at`),
   INDEX `idx_la_ip` (`ip_address`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Portal siswa (sama dengan database/migration_akun_siswa.sql)
+CREATE TABLE IF NOT EXISTS siswa_akun (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  siswa_id INT UNSIGNED NOT NULL,
+  password_hash VARCHAR(255) NULL,
+  status ENUM('menunggu','aktif','nonaktif') NOT NULL DEFAULT 'menunggu',
+  kode_hash VARCHAR(128) NULL,
+  kode_salt VARCHAR(32) NULL,
+  kode_berlaku_hingga DATETIME NULL,
+  kode_salah INT UNSIGNED NOT NULL DEFAULT 0,
+  kode_terkunci_hingga DATETIME NULL,
+  sesi_versi INT UNSIGNED NOT NULL DEFAULT 1,
+  dibuat_oleh INT UNSIGNED NULL,
+  login_terakhir DATETIME NULL,
+  password_diubah DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_akun_siswa (siswa_id),
+  CONSTRAINT fk_akun_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS portal_attempts (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  kunci VARCHAR(60) NOT NULL,
+  ip_address VARCHAR(45) NOT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX idx_pa_kunci (kunci, created_at),
+  INDEX idx_pa_ip (ip_address, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pengajuan izin/sakit + notifikasi portal (sama dengan database/migration_izin.sql)
+CREATE TABLE IF NOT EXISTS izin_pengajuan (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  siswa_id INT UNSIGNED NOT NULL,
+  jenis ENUM('izin','sakit') NOT NULL,
+  tanggal_mulai DATE NOT NULL,
+  tanggal_selesai DATE NOT NULL,
+  alasan VARCHAR(500) NOT NULL,
+  lampiran VARCHAR(80) NULL,
+  lampiran_nama VARCHAR(120) NULL,
+  lampiran_tipe VARCHAR(40) NULL,
+  lampiran_dihapus_at DATETIME NULL,
+  status ENUM('menunggu','disetujui','ditolak','dibatalkan','dicabut') NOT NULL DEFAULT 'menunggu',
+  diajukan_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  diproses_oleh INT UNSIGNED NULL,
+  diproses_nama VARCHAR(100) NULL,
+  diproses_at DATETIME NULL,
+  catatan_petugas VARCHAR(300) NULL,
+  hari_diterapkan SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_iz_status (status, diajukan_at),
+  KEY idx_iz_siswa (siswa_id, tanggal_mulai),
+  KEY idx_iz_tanggal (tanggal_mulai, tanggal_selesai),
+  CONSTRAINT fk_izin_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS izin_hari (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  pengajuan_id INT UNSIGNED NOT NULL,
+  tanggal DATE NOT NULL,
+  hasil ENUM('diterapkan','sudah_ada','dipakai_hadir','dicabut') NOT NULL,
+  UNIQUE KEY uniq_izin_hari (pengajuan_id, tanggal),
+  CONSTRAINT fk_izin_hari FOREIGN KEY (pengajuan_id) REFERENCES izin_pengajuan (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS portal_notifikasi (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  siswa_id INT UNSIGNED NOT NULL,
+  jenis VARCHAR(30) NOT NULL,
+  judul VARCHAR(120) NOT NULL,
+  isi VARCHAR(400) NOT NULL,
+  tautan VARCHAR(120) NULL,
+  dibaca_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_notif_siswa (siswa_id, dibaca_at, id),
+  CONSTRAINT fk_notif_siswa FOREIGN KEY (siswa_id) REFERENCES siswa (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data awal
