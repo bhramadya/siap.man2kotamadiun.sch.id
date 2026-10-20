@@ -18,7 +18,9 @@ $hal = min($hal, $totalHal);
 $st = $db->prepare('SELECT * FROM izin_pengajuan WHERE siswa_id = :s ORDER BY id DESC LIMIT ' . $perHalaman . ' OFFSET ' . (($hal - 1) * $perHalaman));
 $st->execute([':s' => $sid]);
 $daftar = $st->fetchAll();
-$menunggu = (int) $db->query('SELECT COUNT(*) FROM izin_pengajuan WHERE siswa_id = ' . $sid . " AND status = 'menunggu'")->fetchColumn();
+$stMenunggu = $db->prepare("SELECT COUNT(*) FROM izin_pengajuan WHERE siswa_id = :s AND status = 'menunggu'");
+$stMenunggu->execute([':s' => $sid]);
+$menunggu = (int) $stMenunggu->fetchColumn();
 
 portal_app_awal('Izin / Sakit', $akun, 'izin');
 if ($info !== '') portal_alert('ok', $info);

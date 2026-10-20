@@ -83,7 +83,8 @@ function get_ringkasan_bulanan_siswa(int $siswaId, string $tanggalAcuan): array
             SUM(status IN ('ALPA','IZIN','SAKIT')) AS tidak_hadir,
             COUNT(*) AS total_hari
          FROM presensi
-         WHERE siswa_id = :sid AND MONTH(tanggal) = :bulan AND YEAR(tanggal) = :tahun"
+         WHERE siswa_id = :sid AND MONTH(tanggal) = :bulan AND YEAR(tanggal) = :tahun
+           AND tanggal <= CURDATE()"
     );
     $stmt->execute([':sid' => $siswaId, ':bulan' => $bulan, ':tahun' => $tahun]);
     $r = $stmt->fetch();

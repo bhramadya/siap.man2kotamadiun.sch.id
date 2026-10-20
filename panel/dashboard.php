@@ -330,7 +330,8 @@ $stRajin->execute([':awal' => $awalBulan]);
 $siswaRajin = $stRajin->fetchAll();
 
 // Rekor 4: 3 kelas dengan persentase kehadiran terbaik bulan ini
-$stHariAktif = $db->prepare('SELECT COUNT(DISTINCT tanggal) FROM presensi WHERE tanggal >= :awal');
+// tanggal <= CURDATE(): izin yang disetujui sampai 30 hari ke depan tidak boleh ikut dihitung sebagai hari aktif.
+$stHariAktif = $db->prepare('SELECT COUNT(DISTINCT tanggal) FROM presensi WHERE tanggal >= :awal AND tanggal <= CURDATE()');
 $stHariAktif->execute([':awal' => $awalBulan]);
 $hariAktifBulan = (int) $stHariAktif->fetchColumn();
 $kelasTerbaik = [];

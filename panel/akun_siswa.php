@@ -211,7 +211,9 @@ document.getElementById('btnCsv')?.addEventListener('click', function () {
   document.querySelectorAll('.slip').forEach(function (s) {
     baris.push([s.dataset.kelas, s.dataset.nama, s.dataset.nisn, s.dataset.kode, s.dataset.berlaku]);
   });
-  var csv = '\ufeff' + baris.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+  // Netralkan formula (CSV injection): sel yang diawali = + - @ (atau tab/CR) diberi awalan petik satu.
+  var aman = function (c) { c = String(c); return /^[=+\-@\t\r]/.test(c) ? "'" + c : c; };
+  var csv = '\ufeff' + baris.map(function (r) { return r.map(function (c) { return '"' + aman(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
   var a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = 'kode-aktivasi-' + new Date().toISOString().slice(0, 10) + '.csv';
