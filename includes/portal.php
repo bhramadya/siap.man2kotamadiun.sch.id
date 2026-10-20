@@ -23,8 +23,9 @@ const PORTAL_KODE_ALFABET     = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // tanpa I, L
 const PORTAL_KODE_MAKS_SALAH  = 5;                                 // salah ketik kode -> dikunci sementara
 const PORTAL_KODE_KUNCI_MENIT = 15;
 const PORTAL_PASSWORD_MIN     = 8;
-const PORTAL_MAKS_GAGAL_NISN  = 5;                                 // gagal login per NISN / 15 menit
+const PORTAL_MAKS_GAGAL_NISN  = 5;                                 // gagal login per NISN dari IP yang sama / 15 menit
 const PORTAL_MAKS_GAGAL_IP    = 100;                               // longgar: Wi-Fi sekolah = 1 IP untuk banyak siswa
+const PORTAL_MAKS_GAGAL_NISN_GLOBAL = 30;                          // per NISN dari IP mana pun (serangan dari banyak IP)
 const PORTAL_JENDELA_DETIK    = 900;
 const PORTAL_IDLE_DETIK       = 7200;                              // 2 jam tanpa aktivitas -> keluar
 const PORTAL_DUMMY_HASH       = '$2y$10$oC/uUCVb5K6tvr9/kKopY.B3ajcc2Gto/s28srtKZOUAdsHWdwxQy';                  // pembanding agar waktu respons NISN tak dikenal = NISN dikenal
@@ -128,18 +129,15 @@ function portal_aktif(): bool
 function portal_kunci_sisa(string $kunci): int
 {
     try {
-        $db = getDB();
-        $w  = PORTAL_JENDELA_DETIK;
-        $hitung = function (string $kolom, string $nilai, int $maks) use ($db, $w): int {
-            // $kolom, $w, $maks adalah konstanta dari kode ini (bukan input pengguna).
-            $st = $db->prepare("SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) FROM portal_attempts
-                                WHERE $kolom = :v AND created_at > (NOW() - INTERVAL $w SECOND)
-                                ORDER BY id DESC LIMIT $maks");
-            $st->execute([':v' => $nilai]);
-            $umur = $st->fetchAll(PDO::FETCH_COLUMN);
-            return count($umur) < $maks ? 0 : max(1, $w - (int) end($umur));
-        };
-        return max($hitung('kunci', $kunci, PORTAL_MAKS_GAGAL_NISN), $hitung('ip_address', get_client_ip(), PORTAL_MAKS_GAGAL_IP));
+        // Kunci keras per NISN + IP (orang lain di jaringan lain tidak bisa mengunci siswa ini),
+        // per IP, dan batas global per NISN yang lebih longgar.
+        $k  = substr($kunci, 0, 60);
+        $ip = substr(get_client_ip(), 0, 45);
+        return hitung_sisa_kunci(getDB(), 'portal_attempts', PORTAL_JENDELA_DETIK, [
+            [['kunci' => $k, 'ip_address' => $ip], PORTAL_MAKS_GAGAL_NISN],
+            [['ip_address' => $ip], PORTAL_MAKS_GAGAL_IP],
+            [['kunci' => $k], PORTAL_MAKS_GAGAL_NISN_GLOBAL],
+        ]);
     } catch (Throwable $e) {
         error_log('portal_kunci_sisa: ' . $e->getMessage());
         return 0;

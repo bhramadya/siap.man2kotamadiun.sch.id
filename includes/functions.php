@@ -441,16 +441,48 @@ function generate_token(int $bytes = 32): string
 // ---------------------------------------------------------------------
 // IP ADDRESS
 // ---------------------------------------------------------------------
+/**
+ * IP klien. SELALU REMOTE_ADDR, kecuali REMOTE_ADDR adalah reverse proxy tepercaya
+ * (TRUSTED_PROXIES di config/database.local.php): baru X-Forwarded-For dibaca, dari kanan,
+ * dan diambil alamat pertama yang bukan proxy tepercaya. Header X-Forwarded-For / Client-IP
+ * dari pengunjung biasa diabaikan, karena siapa pun bisa mengisinya (dulu dipakai untuk
+ * mengakali pembatas login per IP).
+ */
 function get_client_ip(): string
 {
-    $keys = ['HTTP_X_FORWARDED_FOR', 'HTTP_CLIENT_IP', 'REMOTE_ADDR'];
-    foreach ($keys as $key) {
-        if (!empty($_SERVER[$key])) {
-            $ip = explode(',', $_SERVER[$key])[0];
-            return trim($ip);
+    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($remote === '') return '0.0.0.0';
+    $proxy = defined('TRUSTED_PROXIES') ? (array) TRUSTED_PROXIES : [];
+    if ($proxy && !empty($_SERVER['HTTP_X_FORWARDED_FOR']) && ip_dalam_daftar($remote, $proxy)) {
+        $rantai = array_reverse(array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR'])));
+        foreach ($rantai as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP) === false) break;
+            if (!ip_dalam_daftar($ip, $proxy)) return $ip;
         }
     }
-    return '0.0.0.0';
+    return $remote;
+}
+
+/** Apakah $ip termasuk salah satu entri daftar (IP tunggal atau CIDR, IPv4/IPv6)? */
+function ip_dalam_daftar(string $ip, array $daftar): bool
+{
+    $bin = @inet_pton($ip);
+    if ($bin === false) return false;
+    foreach ($daftar as $entri) {
+        $entri = trim((string) $entri);
+        if ($entri === '') continue;
+        [$net, $bits] = array_pad(explode('/', $entri, 2), 2, null);
+        $netBin = @inet_pton($net);
+        if ($netBin === false || strlen($netBin) !== strlen($bin)) continue;
+        $bits = $bits === null ? strlen($bin) * 8 : max(0, min(strlen($bin) * 8, (int) $bits));
+        $penuh = intdiv($bits, 8);
+        if (substr($bin, 0, $penuh) !== substr($netBin, 0, $penuh)) continue;
+        $sisa = $bits % 8;
+        if ($sisa === 0) return true;
+        $mask = (0xFF << (8 - $sisa)) & 0xFF;
+        if ((ord($bin[$penuh]) & $mask) === (ord($netBin[$penuh]) & $mask)) return true;
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------
@@ -573,13 +605,38 @@ function security_log(?int $siswaId, string $event, ?string $deviceHash = null, 
 
 // ---------------------------------------------------------------------
 // PEMBATAS PERCOBAAN LOGIN (anti brute force)
-// Dibatasi per USERNAME (ketat) dan per IP (longgar) dalam jendela waktu tertentu.
+// Penguncian KERAS per pasangan USERNAME + IP dan per IP, bukan per username saja: dulu siapa pun
+// bisa membuat akun admin terkunci terus-menerus cukup dengan salah password berulang. Batas global
+// per username sengaja jauh lebih longgar (hanya menahan serangan dari banyak IP sekaligus).
 // Tabel dibuat otomatis; bila gagal dibuat/dibaca, login tetap berjalan (fail-open)
 // dan error dicatat di error_log agar admin tidak terkunci karena masalah database.
 // ---------------------------------------------------------------------
-const LOGIN_MAKS_GAGAL_USER = 5;    // gagal per username
-const LOGIN_MAKS_GAGAL_IP   = 20;   // gagal per IP
-const LOGIN_JENDELA_DETIK   = 900;  // 15 menit
+const LOGIN_MAKS_GAGAL_USER_IP = 5;    // gagal per username dari IP yang sama
+const LOGIN_MAKS_GAGAL_IP      = 20;   // gagal per IP (semua username)
+const LOGIN_MAKS_GAGAL_USER    = 100;  // gagal per username dari IP mana pun (serangan terdistribusi)
+const LOGIN_JENDELA_DETIK      = 900;  // 15 menit
+
+/**
+ * Sisa detik penguncian berdasarkan daftar kondisi. $tabel/$kolom/$w/$maks selalu konstanta
+ * dari kode ini (bukan input pengguna); nilainya diikat lewat parameter.
+ * @param array<int,array{0:array<string,string>,1:int}> $aturan  [[kolom => nilai, ...], maks]
+ */
+function hitung_sisa_kunci(PDO $db, string $tabel, int $w, array $aturan): int
+{
+    $sisa = 0;
+    foreach ($aturan as [$kondisi, $maks]) {
+        $where = []; $par = [];
+        $i = 0;
+        foreach ($kondisi as $kolom => $nilai) { $where[] = "$kolom = :v$i"; $par[":v$i"] = $nilai; $i++; }
+        $st = $db->prepare("SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) FROM $tabel
+                            WHERE " . implode(' AND ', $where) . " AND created_at > (NOW() - INTERVAL $w SECOND)
+                            ORDER BY id DESC LIMIT " . (int) $maks);
+        $st->execute($par);
+        $umur = $st->fetchAll(PDO::FETCH_COLUMN);
+        if (count($umur) >= $maks) $sisa = max($sisa, max(1, $w - (int) end($umur))); // terkunci sampai kegagalan ke-$maks keluar dari jendela
+    }
+    return $sisa;
+}
 
 function login_siapkan_tabel(): bool
 {
@@ -611,22 +668,13 @@ function login_kunci_sisa(string $username): int
 {
     if (!login_siapkan_tabel()) return 0;
     try {
-        $db = getDB();
-        $w  = LOGIN_JENDELA_DETIK;
-        $hitung = function (string $kolom, string $nilai, int $maks) use ($db, $w): int {
-            // $kolom, $w, $maks selalu konstanta dari kode ini (bukan input pengguna).
-            $st = $db->prepare("SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) FROM login_attempts
-                                WHERE $kolom = :v AND created_at > (NOW() - INTERVAL $w SECOND)
-                                ORDER BY id DESC LIMIT $maks");
-            $st->execute([':v' => $nilai]);
-            $umur = $st->fetchAll(PDO::FETCH_COLUMN);
-            if (count($umur) < $maks) return 0;
-            return max(1, $w - (int) end($umur)); // terkunci sampai kegagalan ke-$maks keluar dari jendela
-        };
-        return max(
-            $hitung('username', login_normalisasi_username($username), LOGIN_MAKS_GAGAL_USER),
-            $hitung('ip_address', get_client_ip(), LOGIN_MAKS_GAGAL_IP)
-        );
+        $u  = login_normalisasi_username($username);
+        $ip = substr(get_client_ip(), 0, 45);
+        return hitung_sisa_kunci(getDB(), 'login_attempts', LOGIN_JENDELA_DETIK, [
+            [['username' => $u, 'ip_address' => $ip], LOGIN_MAKS_GAGAL_USER_IP],
+            [['ip_address' => $ip], LOGIN_MAKS_GAGAL_IP],
+            [['username' => $u], LOGIN_MAKS_GAGAL_USER],
+        ]);
     } catch (Throwable $e) {
         error_log('login_kunci_sisa: ' . $e->getMessage());
         return 0;

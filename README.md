@@ -283,7 +283,8 @@ Siswa **tidak mendaftar sendiri** dan
 - Pembatas percobaan sendiri (`portal_attempts`) agar kegagalan siswa di Wi-Fi sekolah tidak mengunci login admin.
 
 **Keamanan yang diterapkan**
-- Gagal login dibatasi per NISN (5x / 15 menit) dan per IP (100x); salah kode aktivasi 5x mengunci 15 menit.
+- Gagal login dibatasi per NISN dari IP yang sama (5x / 15 menit), per IP (100x), dan per NISN dari IP mana pun
+  (30x); salah kode aktivasi 5x mengunci 15 menit.
 - Pesan galat sengaja umum, dan pesan serta waktu respons jalur petugas, siswa, dan username tak dikenal disamakan
   (terukur ±380 ms semua), supaya username petugas maupun NISN yang punya akun tidak bisa ditebak.
 - Login siswa **bukan pengganti Device Binding**: presensi tetap lewat perangkat terdaftar.
@@ -301,8 +302,8 @@ Alamat lama `/portal/masuk` otomatis dialihkan ke `/login`. File `portal_siswa/m
 jalankan `database/migration_akun_siswa.sql` sekali.
 
 **Batas yang perlu diketahui:** sesi PHP berakhir sesuai `session.gc_maxlifetime` server (biasanya ±24 menit tanpa
-aktivitas), jadi siswa bisa diminta masuk ulang; dan penguncian per NISN berarti orang lain bisa membuat satu siswa
-terkunci sementara dengan menebak password berulang (pemulihannya otomatis setelah 15 menit).
+aktivitas), jadi siswa bisa diminta masuk ulang. Penguncian keras kini per NISN + IP, jadi orang lain hanya bisa
+mengunci satu siswa bila menebak dari 30 kali lebih dalam 15 menit dari beberapa IP (pemulihan otomatis setelah 15 menit).
 
 ---
 
@@ -368,8 +369,14 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
   izin memeriksa login + izin `izin.lihat` sendiri (petugas) atau kepemilikan pengajuan (siswa).
 - **Izin per role ditegakkan di `require_login()`** (`includes/auth.php`) untuk semua jalur
   (router maupun akses langsung ke `/panel/xxx.php`).
-- **Pembatas login:** 5 gagal per username atau 20 gagal per IP dalam 15 menit
-  mengunci login sementara (tabel `login_attempts`, dibuat otomatis).
+- **Pembatas login:** 5 gagal untuk satu username **dari IP yang sama**, 20 gagal per IP, atau 100 gagal per
+  username dari IP mana pun dalam 15 menit mengunci login sementara (tabel `login_attempts`, dibuat otomatis).
+  Karena kunci keras berlaku per username + IP, orang lain tidak bisa lagi membuat akun `admin` terkunci dari
+  jaringannya sendiri.
+- **IP klien = `REMOTE_ADDR`.** Header `X-Forwarded-For` hanya dibaca bila permintaan datang dari proxy yang
+  terdaftar di `trusted_proxies` (`config/database.local.php`), sehingga pembatas login/portal tidak bisa diakali
+  dengan header palsu. Bila situs berada di belakang Cloudflare/reverse proxy, isi `trusted_proxies` dengan
+  IP/CIDR proxy tersebut; bila tidak, semua pengunjung akan terlihat ber-IP proxy.
 - **Header keamanan & cookie sesi** (`HttpOnly`, `SameSite=Lax`, `Secure` di HTTPS, strict mode,
   regenerasi ID sesi berkala) diatur di `includes/keamanan.php`. CSP belum dipasang karena
   aplikasi memakai script/style inline.
