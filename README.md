@@ -420,18 +420,28 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
   (router maupun akses langsung ke `/panel/xxx.php`).
 - **Pembatas login** (tabel `login_attempts` + `login_ip_dikenal`, dibuat otomatis; sama untuk portal siswa):
   1. **Kunci 15 menit** setelah 5 gagal untuk satu username dari IP yang sama (berlaku untuk semua IP).
-  2. **Kunci 15 menit** setelah 20 gagal dari satu IP (semua username), **kecuali** IP yang dalam 30 hari terakhir
-     pernah login berhasil ke username itu ("IP dikenal"). Siswa di balik NAT Wi-Fi sekolah tidak bisa mengunci petugas
-     yang biasa login dari jaringan itu.
+  2. **Kunci 15 menit** setelah 20 gagal dari satu IP (semua username; portal siswa: 100). Untuk IP yang dalam 30 hari
+     terakhir pernah login berhasil ke username itu ("IP dikenal") batasnya lebih longgar tetapi tetap ada:
+     **300 gagal / 15 menit dari IP itu (semua akun)**. Siswa di balik NAT Wi-Fi sekolah tidak mudah mengunci petugas
+     yang biasa login dari jaringan itu, dan tebakan dari IP bersama tetap terbatas (mis. ±300 per 15 menit, bukan
+     5 per akun untuk ribuan akun).
   3. Lebih dari 100 gagal untuk satu username dari IP mana pun **tidak mengunci**: IP yang tidak dikenal hanya boleh
      satu pemeriksaan password untuk username itu tiap 1–60 detik (jeda naik bertahap tiap 20 kegagalan). Ini membatasi
      tebakan terdistribusi (botnet, banyak alamat IPv6) sekitar 1.440 per hari, sementara pemilik akun dari IP dikenal
      tidak terpengaruh.
-  - IPv6 dihitung per blok **/64**. Login berhasil hanya menghapus riwayat gagal dari IP itu sendiri.
+  - IPv6 dihitung per blok **/64**; alamat IPv4-mapped (`::ffff:1.2.3.4`) dibaca sebagai IPv4 biasa. Login berhasil
+    hanya menghapus riwayat gagal dari IP itu sendiri.
+  - **Aman dari permintaan paralel:** pemeriksaan batas dan pencatatan percobaan dilakukan di bawah kunci MySQL
+    `GET_LOCK` (per IP lalu per akun) **sebelum** password diperiksa; setiap percobaan dicatat dulu sebagai gagal
+    dan dihapus bila password benar. Jadi 40 permintaan serentak dari satu IP tetap hanya mendapat 5 pemeriksaan
+    password, dan saat jeda aktif hanya satu permintaan per jeda yang diperiksa.
   - **Batas yang tersisa (jujur):** orang yang memakai IP yang sama dengan petugas (mis. satu NAT sekolah) tetap bisa
     mengunci username itu dari IP tersebut selama 15 menit dengan 5 password salah (aturan 1), dan saat diserang
-    besar-besaran petugas yang login dari perangkat/jaringan **baru** harus menunggu jeda beberapa detik. Pemulihan
-    tercepat: login dari jaringan yang biasa dipakai (IP dikenal), atau tunggu 15 menit.
+    besar-besaran petugas yang login dari perangkat/jaringan **baru** bisa tidak kebagian giliran: penyerang yang
+    mengirim satu percobaan setiap jeda ikut memakai setiap giliran pemeriksaan (hingga 60 detik). Password yang
+    benar sengaja **tidak** diloloskan saat jeda, karena itu justru membuat jeda tidak berguna (setiap tebakan tetap
+    diperiksa). Pemulihan tercepat: login dari jaringan yang biasa dipakai (IP dikenal, tidak kena jeda), atau tunggu
+    sampai serangan berhenti / 15 menit.
 - **IP klien = `REMOTE_ADDR`.** Header `X-Forwarded-For` hanya dibaca bila permintaan datang dari proxy yang
   terdaftar di `trusted_proxies` (`config/database.local.php`), sehingga pembatas login/portal tidak bisa diakali
   dengan header palsu. Bila situs berada di belakang Cloudflare/reverse proxy, isi `trusted_proxies` dengan

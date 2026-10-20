@@ -11,16 +11,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
     if (!csrf_verify($_POST['csrf_token'] ?? '')) {
         $galat = 'Sesi halaman kedaluwarsa. Muat ulang halaman lalu coba lagi.';
-    } elseif (portal_kunci_sisa('ganti:' . $akun['id']) > 0) {
+    } elseif (($percobaan = portal_mulai_percobaan('ganti:' . $akun['id']))['sisa'] > 0) {
         $galat = 'Terlalu banyak percobaan. Coba lagi beberapa menit lagi.';
     } elseif (!password_verify($lama, (string) $akun['password_hash'])) {
-        portal_catat_gagal('ganti:' . $akun['id']);
+        portal_catat_gagal('ganti:' . $akun['id'], $percobaan['id']);
         $galat = 'Password lama salah.';
     } elseif ($baru !== $ulang) {
+        portal_batal_percobaan($percobaan['id']);   // password lama benar: bukan percobaan gagal
         $galat = 'Konfirmasi password belum sama.';
     } elseif ($baru === $lama) {
+        portal_batal_percobaan($percobaan['id']);   // password lama benar: bukan percobaan gagal
         $galat = 'Password baru harus berbeda dari yang lama.';
     } elseif (($g = portal_validasi_password($baru, $akun)) !== null) {
+        portal_batal_percobaan($percobaan['id']);   // password lama benar: bukan percobaan gagal
         $galat = $g;
     } else {
         $u = getDB()->prepare('UPDATE siswa_akun SET password_hash = :p, password_diubah = NOW(), sesi_versi = sesi_versi + 1 WHERE id = :id');

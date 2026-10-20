@@ -30,7 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $cekPetugas->execute([':u' => $username]);
 
       if ($cekPetugas->fetchColumn()) {
-        $sisaKunci = login_kunci_sisa($username);
+        // Atomik: batas diperiksa DAN percobaan dicatat sebelum password diperiksa (aman dari permintaan paralel).
+        $percobaan = login_mulai_percobaan($username);
+        $sisaKunci = $percobaan['sisa'];
         if ($sisaKunci > 0) {
           // Terlalu banyak percobaan gagal: jangan periksa password sama sekali.
           security_log(null, 'ADMIN_LOGIN_LOCKED', null, 'Login diblokir sementara untuk username: ' . substr($username, 0, 50));
@@ -60,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php?modul=dashboard');
             exit;
           } else {
-            login_catat_gagal($username);
+            login_catat_gagal($username, $percobaan['id']);
             security_log(null, 'ADMIN_LOGIN_FAILED', null, 'Login admin gagal untuk username: ' . substr($username, 0, 50));
             $error = 'Username atau password salah.';
             usleep(300000); // mitigasi brute force sederhana

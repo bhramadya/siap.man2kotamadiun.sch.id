@@ -25,6 +25,7 @@ const PORTAL_KODE_KUNCI_MENIT = 15;
 const PORTAL_PASSWORD_MIN     = 8;
 const PORTAL_MAKS_GAGAL_NISN  = 5;                                 // gagal login per NISN dari IP yang sama / 15 menit
 const PORTAL_MAKS_GAGAL_IP    = 100;                               // longgar: Wi-Fi sekolah = 1 IP untuk banyak siswa
+const PORTAL_MAKS_GAGAL_IP_DIKENAL = 300;                          // idem bila IP ini "dikenal" untuk NISN tsb (tetap terbatas)
 const PORTAL_AMBANG_NISN      = 30;                                // per NISN dari IP mana pun -> jeda bertahap (bukan kunci)
 const PORTAL_JENDELA_DETIK    = 900;
 const PORTAL_IDLE_DETIK       = 7200;                              // 2 jam tanpa aktivitas -> keluar
@@ -124,31 +125,38 @@ function portal_aktif(): bool
 }
 
 // ---------------------------------------------------------------------
-// PEMBATAS PERCOBAAN (per kunci + per IP). Gagal -> catat; berhasil -> bersihkan.
+// PEMBATAS PERCOBAAN (per kunci + per IP). Mulai (atomik) -> gagal: catat; berhasil: bersihkan;
+// bukan percobaan yang dihitung: batal.
 // ---------------------------------------------------------------------
-function portal_kunci_sisa(string $kunci): int
+/**
+ * Aturan sama dengan login petugas (lihat pembatas_sisa()/pembatas_mulai() di functions.php): kunci keras
+ * per NISN + IP dan per IP (IP dikenal: batas lebih longgar), jeda bertahap di atas ambang global per NISN.
+ * Batas diperiksa dan percobaan dicatat di bawah GET_LOCK, sebelum password/kode diperiksa.
+ * @return array{sisa:int,id:?int}
+ */
+function portal_mulai_percobaan(string $kunci): array
 {
     try {
-        // Aturan sama dengan login petugas (lihat pembatas_sisa() di functions.php): kunci keras per
-        // NISN + IP dan per IP (IP dikenal dikecualikan), jeda bertahap di atas ambang global per NISN.
-        return pembatas_sisa('portal_attempts', 'kunci', 'portal', substr($kunci, 0, 60),
-            PORTAL_MAKS_GAGAL_NISN, PORTAL_MAKS_GAGAL_IP, PORTAL_AMBANG_NISN, PORTAL_JENDELA_DETIK);
+        return pembatas_mulai('portal_attempts', 'kunci', 'portal', substr($kunci, 0, 60),
+            PORTAL_MAKS_GAGAL_NISN, PORTAL_MAKS_GAGAL_IP, PORTAL_MAKS_GAGAL_IP_DIKENAL, PORTAL_AMBANG_NISN, PORTAL_JENDELA_DETIK);
     } catch (Throwable $e) {
-        error_log('portal_kunci_sisa: ' . $e->getMessage());
-        return 0;
+        error_log('portal_mulai_percobaan: ' . $e->getMessage());
+        return ['sisa' => 0, 'id' => null];
     }
 }
 
-function portal_catat_gagal(string $kunci): void
+function portal_catat_gagal(string $kunci, ?int $idPercobaan = null): void
 {
     try {
-        $db = getDB();
-        $db->prepare('INSERT INTO portal_attempts (kunci, ip_address, created_at) VALUES (:k, :ip, NOW())')
-           ->execute([':k' => substr($kunci, 0, 60), ':ip' => kunci_ip_pembatas()]);
-        if (random_int(1, 20) === 1) $db->exec('DELETE FROM portal_attempts WHERE created_at < (NOW() - INTERVAL 1 DAY)');
+        pembatas_catat_gagal('portal_attempts', 'kunci', substr($kunci, 0, 60), $idPercobaan);
     } catch (Throwable $e) {
         error_log('portal_catat_gagal: ' . $e->getMessage());
     }
+}
+
+function portal_batal_percobaan(?int $idPercobaan): void
+{
+    pembatas_batal('portal_attempts', $idPercobaan);
 }
 
 /** Berhasil: hapus kegagalan kunci ini hanya dari IP ini, dan catat IP ini sebagai IP dikenal. */
@@ -303,16 +311,19 @@ function portal_aktivasi(string $nisn, string $kodeInput, string $password): arr
     $umum = 'NISN atau kode aktivasi tidak valid, atau sudah kedaluwarsa. Hubungi petugas sekolah bila perlu kode baru.';
     $kunci = 'aktivasi:' . $nisn;
 
-    $sisa = portal_kunci_sisa($kunci);
+    $percobaan = portal_mulai_percobaan($kunci);
+    $sisa = $percobaan['sisa'];
+    $idP = $percobaan['id'];
     if ($sisa > 0) return ['ok' => false, 'pesan' => 'Terlalu banyak percobaan. Coba lagi dalam ' . portal_menit_teks($sisa) . '.'];
 
     $akun = portal_cari_akun_nisn($nisn);
     if (!$akun || $akun['status'] !== 'menunggu' || $akun['siswa_status'] !== 'aktif' || !$akun['kode_hash'] || !(int) $akun['kode_valid']) {
-        portal_catat_gagal($kunci);
+        portal_catat_gagal($kunci, $idP);
         security_log($akun ? (int) $akun['siswa_id'] : null, 'PORTAL_AKTIVASI_GAGAL', null, 'Kode/NISN tidak valid. NISN ' . $nisn);
         return ['ok' => false, 'pesan' => $umum];
     }
     if ((int) $akun['kunci_sisa'] > 0) {
+        portal_batal_percobaan($idP);
         return ['ok' => false, 'pesan' => 'Terlalu banyak salah kode. Coba lagi dalam ' . portal_menit_teks((int) $akun['kunci_sisa']) . ', atau minta kode baru ke petugas.'];
     }
 
@@ -327,20 +338,20 @@ function portal_aktivasi(string $nisn, string $kodeInput, string $password): arr
             $db->prepare("UPDATE siswa_akun SET kode_salah = 0, kode_terkunci_hingga = NOW() + INTERVAL $m MINUTE WHERE id = :id")->execute([':id' => $akun['id']]);
             security_log((int) $akun['siswa_id'], 'PORTAL_AKTIVASI_GAGAL', null, 'Terkunci ' . $m . ' menit setelah ' . PORTAL_KODE_MAKS_SALAH . ' kode salah');
         }
-        portal_catat_gagal($kunci);
+        portal_catat_gagal($kunci, $idP);
         security_log((int) $akun['siswa_id'], 'PORTAL_AKTIVASI_GAGAL', null, 'Kode salah');
         return ['ok' => false, 'pesan' => $umum];
     }
 
     // Kode benar -> baru periksa syarat password (salah password tidak menghabiskan kode).
     $galat = portal_validasi_password($password, $akun);
-    if ($galat !== null) return ['ok' => false, 'pesan' => $galat, 'galat_password' => true];
+    if ($galat !== null) { portal_batal_percobaan($idP); return ['ok' => false, 'pesan' => $galat, 'galat_password' => true]; }
 
     $u = getDB()->prepare("UPDATE siswa_akun SET password_hash = :p, status = 'aktif', kode_hash = NULL, kode_salt = NULL,
             kode_berlaku_hingga = NULL, kode_salah = 0, kode_terkunci_hingga = NULL, password_diubah = NOW(), sesi_versi = sesi_versi + 1
         WHERE id = :id AND status = 'menunggu'");
     $u->execute([':p' => password_hash($password, PASSWORD_DEFAULT), ':id' => $akun['id']]);
-    if ($u->rowCount() !== 1) return ['ok' => false, 'pesan' => $umum];
+    if ($u->rowCount() !== 1) { portal_batal_percobaan($idP); return ['ok' => false, 'pesan' => $umum]; }
 
     portal_bersihkan_gagal($kunci);
     security_log((int) $akun['siswa_id'], 'PORTAL_AKTIVASI_OK', null, 'Akun portal diaktifkan');
@@ -351,7 +362,8 @@ function portal_aktivasi(string $nisn, string $kodeInput, string $password): arr
 function portal_coba_login(string $nisn, string $password): array
 {
     $kunci = 'masuk:' . $nisn;
-    $sisa = portal_kunci_sisa($kunci);
+    $percobaan = portal_mulai_percobaan($kunci);   // atomik: dicatat dulu, dihapus bila password benar
+    $sisa = $percobaan['sisa'];
     if ($sisa > 0) {
         security_log(null, 'PORTAL_LOGIN_TERKUNCI', null, 'NISN ' . $nisn);
         return ['ok' => false, 'terkunci' => true, 'sisa' => $sisa, 'pesan' => 'Terlalu banyak percobaan. Coba lagi dalam ' . portal_menit_teks($sisa) . '.'];
@@ -369,7 +381,7 @@ function portal_coba_login(string $nisn, string $password): array
         return ['ok' => true, 'akun' => $akun];
     }
 
-    portal_catat_gagal($kunci);
+    portal_catat_gagal($kunci, $percobaan['id']);
     security_log($akun ? (int) $akun['siswa_id'] : null, 'PORTAL_LOGIN_GAGAL', null, 'NISN ' . $nisn);
     return ['ok' => false, 'pesan' => 'Username atau password salah.'];
 }
