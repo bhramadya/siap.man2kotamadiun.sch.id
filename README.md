@@ -92,7 +92,8 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
    `config/database.local.php` **tidak ikut git** (lihat `.gitignore`), jadi kredensial tidak pernah ter-commit dan
    tidak tertimpa saat kode diperbarui. `config/database.php` (yang ada di git) tidak perlu diubah. Alternatif tanpa
    file: variabel lingkungan `SIAP_DB_HOST`, `SIAP_DB_NAME`, `SIAP_DB_USER`, `SIAP_DB_PASS`, `SIAP_BASE_URL`,
-   `SIAP_APP_SECRET`, `SIAP_TRUSTED_PROXIES`.
+   `SIAP_APP_SECRET`, `SIAP_TRUSTED_PROXIES`. `base_url` wajib diisi; bila kosong, Apache/Nginx menampilkan halaman
+   503 "isi base_url di config/database.local.php" (hanya server bawaan `php -S` untuk uji lokal yang menebaknya).
 6. Buka `http://localhost/siap/login.php` dan login dengan akun default (bagian 7).
 
 **Kamera & lokasi:** browser mengizinkan kamera/GPS di `http://localhost`. Untuk uji
@@ -107,9 +108,10 @@ dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan
 3. **Upload source** ke `/www/wwwroot/<domain-anda>/` lalu ekstrak.
 4. **Konfigurasi**: salin `config/database.example.php` menjadi `config/database.local.php`, isi kredensial DB
    dan `base_url` = domain HTTPS, mis. `https://siap.man2kotamadiun.sch.id` (tanpa slash di akhir). Isi juga
-   `app_secret` dengan 64 karakter acak (`php -r "echo bin2hex(random_bytes(32));"`). Bila `base_url` kosong,
-   aplikasi menebak dari alamat yang sedang dibuka dan mencatat peringatan di error log; untuk produksi selalu
-   isi. Import `database/database.sql` lewat phpMyAdmin.
+   `app_secret` dengan 64 karakter acak (`php -r "echo bin2hex(random_bytes(32));"`). **`base_url` wajib diisi:**
+   bila kosong, situs menampilkan halaman 503 dengan kode kejadian berisi "isi base_url di
+   config/database.local.php" (aplikasi sengaja tidak menebak alamat, supaya tidak diam-diam mengarah ke
+   `localhost` atau ke domain dari header `Host` palsu). Import `database/database.sql` lewat phpMyAdmin.
 5. **Permission** folder `uploads/`:
    ```
    chown -R www:www /www/wwwroot/<domain-anda>/uploads
@@ -455,7 +457,8 @@ Lakukan berurutan, **sebelum** menimpa kode lama.
 
 1. **Pindahkan konfigurasi.** Catat nilai `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, dan `BASE_URL` dari
    `config/database.php` yang lama, lalu buat `config/database.local.php` (salin dari `config/database.example.php`)
-   berisi nilai itu. Setelah itu `config/database.php` boleh ditimpa versi baru. Tanpa file lokal, aplikasi memakai
+   berisi nilai itu (`base_url` **wajib**; tanpa itu situs menampilkan 503 "isi base_url di config/database.local.php").
+   Setelah itu `config/database.php` boleh ditimpa versi baru. Tanpa file lokal, aplikasi memakai
    bawaan `root`/tanpa password dan halaman akan menampilkan 503. Ganti password database yang pernah ikut ter-commit.
 2. **Jalankan migrasi database** (phpMyAdmin → pilih database → Import), berurutan. Semua file aman dijalankan
    ulang (idempoten) dan sama persis dengan tabel yang dibuat otomatis oleh aplikasi:

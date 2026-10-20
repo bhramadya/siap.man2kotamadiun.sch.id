@@ -11,7 +11,8 @@ return [
     'db_user' => 'siapabsen',
     'db_pass' => 'GANTI_DENGAN_PASSWORD_DATABASE',
 
-    // Alamat aplikasi TANPA slash di akhir (slash di akhir otomatis dibuang).
+    // Alamat aplikasi TANPA slash di akhir (slash di akhir otomatis dibuang). WAJIB diisi: bila kosong,
+    // situs menampilkan halaman 503 "isi base_url di config/database.local.php".
     // Produksi: 'https://siap.man2kotamadiun.sch.id'   ·   XAMPP: 'http://localhost/siap'
     'base_url' => 'https://siap.man2kotamadiun.sch.id',
 

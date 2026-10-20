@@ -39,16 +39,22 @@ define('DB_CHARSET', 'utf8mb4');
 
 /**
  * Base URL aplikasi (dipakai untuk redirect, cookie portal, dan isi QR Code siswa), TANPA slash
- * di akhir, mis. https://siap.man2kotamadiun.sch.id atau http://localhost/siap.
- * Bila belum diisi, ditebak dari permintaan saat ini (dan dicatat di error_log) supaya
- * instalasi baru tidak diam-diam mengarah ke localhost. Untuk produksi WAJIB diisi.
+ * di akhir, mis. https://siap.man2kotamadiun.sch.id atau http://localhost/siap. WAJIB diisi.
+ * Bila belum diisi:
+ *  - di server web sungguhan (Apache/Nginx/PHP-FPM): halaman 503 "isi base_url di
+ *    config/database.local.php". Tidak menebak, karena tebakan bisa diam-diam menjadi
+ *    http://localhost (vhost tanpa server_name) atau mengikuti header Host palsu (Apache).
+ *  - CLI: http://localhost; server bawaan PHP (php -S, uji lokal): ditebak dari alamat server.
  */
 function siap_tebak_base_url(): string
 {
-    // SERVER_NAME (dari konfigurasi server), BUKAN header Host kiriman klien: Host bisa dipalsukan
-    // (redirect / isi QR / cache poisoning ke domain lain).
+    if (PHP_SAPI === 'cli') return 'http://localhost';
+    if (PHP_SAPI !== 'cli-server') {
+        error_log('SIAP: base_url belum diisi di config/database.local.php (atau SIAP_BASE_URL); aplikasi berhenti dengan 503.');
+        tampilkan_halaman_503('CFG-' . strtoupper(bin2hex(random_bytes(3))) . ' — isi base_url di config/database.local.php; lihat README bagian 11', 'CONFIG_MISSING');
+    }
     $nama = (string) ($_SERVER['SERVER_NAME'] ?? '');
-    if (PHP_SAPI === 'cli' || $nama === '' || $nama === '_') return 'http://localhost';
+    if ($nama === '' || $nama === '_') return 'http://localhost';
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443';
     $host  = preg_replace('/[^A-Za-z0-9.\-:\[\]]/', '', $nama);
     $port  = (int) ($_SERVER['SERVER_PORT'] ?? 0);
@@ -57,13 +63,6 @@ function siap_tebak_base_url(): string
     $root  = realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
     $app   = realpath(dirname(__DIR__));
     if ($root && $app && strpos($app, $root) === 0) $path = str_replace('\\', '/', substr($app, strlen($root)));
-    // Peringatan cukup sekali (penanda di folder temp), bukan di setiap permintaan.
-    $penanda = rtrim(sys_get_temp_dir(), '/\\') . '/siap_base_url_' . md5(__DIR__);
-    if (!@is_file($penanda)) {
-        error_log('SIAP: base_url belum diatur di config/database.local.php; memakai tebakan dari SERVER_NAME: '
-            . ($https ? 'https' : 'http') . '://' . $host . $path);
-        @touch($penanda);
-    }
     return ($https ? 'https' : 'http') . '://' . $host . $path;
 }
 
@@ -128,7 +127,15 @@ function tampilkan_error_database(Throwable $e): void
         fwrite(STDERR, "Koneksi database gagal [$kode]\n");
         exit(1);
     }
+    tampilkan_halaman_503($kode);
+}
 
+/**
+ * Halaman 503 (503.html / JSON untuk API / potongan untuk popup) dengan "kode kejadian" $kode, lalu berhenti.
+ * Dipakai untuk koneksi database gagal dan konfigurasi wajib yang belum diisi (base_url).
+ */
+function tampilkan_halaman_503(string $kode, string $kodeJson = 'DB_UNAVAILABLE'): void
+{
     // Buang keluaran halaman yang sempat tertulis supaya tidak bercampur dengan halaman error.
     while (ob_get_level() > 0) ob_end_clean();
 
@@ -160,7 +167,7 @@ function tampilkan_error_database(Throwable $e): void
         echo json_encode([
             'ok'      => false,
             'success' => false,
-            'code'    => 'DB_UNAVAILABLE',
+            'code'    => $kodeJson,
             'message' => 'Layanan sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi.',
             'ref'     => $kode,
         ], JSON_UNESCAPED_UNICODE);
