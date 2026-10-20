@@ -164,39 +164,54 @@ Semua dilayani `index.php` (front controller) lewat aturan di `.htaccess`.
 - Server **Apache/LiteSpeed** (aaPanel default) cukup memakai `.htaccess` bawaan. **Nginx mengabaikan `.htaccess`**,
   jadi semua perlindungan folder harus ditulis di konfigurasi situs (lihat blok di bawah).
 
-**Konfigurasi Nginx lengkap** (aaPanel → Website → Conf / URL rewrite). Sesuaikan `root` dan `fastcgi_pass`:
+**Nginx — bagian A: aaPanel** (Website → situs → *URL rewrite*). Kotak ini disisipkan aaPanel **di dalam** blok
+`server` miliknya, jadi tempel **hanya** isi berikut (tanpa `server { }` dan tanpa `location ~ \.php$`, karena PHP
+sudah diatur aaPanel lewat `enable-php-XX.conf`). Folder memakai `^~` supaya menang atas lokasi PHP aaPanel yang
+muncul lebih dulu:
+
+```nginx
+# 1) Folder internal: tidak boleh dibuka dari browser (dipakai PHP lewat filesystem saja)
+location ^~ /config/       { deny all; return 404; }
+location ^~ /includes/     { deny all; return 404; }
+location ^~ /database/     { deny all; return 404; }
+location ^~ /portal_siswa/ { deny all; return 404; }
+
+# 2) Berkas sensitif di mana pun: dump SQL, dokumentasi, .htaccess/.user.ini/.git, backup
+location ~* \.(sql|md|ini|log|bak|sh)$ { deny all; return 404; }
+location ~ /\.(?!well-known/) { deny all; return 404; }
+
+# 3) Unggahan: surat izin/dokter (data kesehatan) ditolak total; folder lain hanya berkas statis,
+#    PHP TIDAK PERNAH dieksekusi di bawah /uploads/
+location ^~ /uploads/izin/ { deny all; return 404; }
+location ^~ /uploads/ {
+    location ~ \.(php|phtml|phar|php\d)$ { deny all; return 404; }
+}
+
+# 4) URL bersih: /login -> login.php, /siswa/123 -> index.php (router)
+location / { try_files $uri $uri/ @siap; }
+location @siap {
+    if (-f $document_root$uri.php) { rewrite ^ $uri.php last; }
+    rewrite ^ /index.php last;
+}
+```
+
+Simpan, lalu pastikan `nginx -t` lolos (aaPanel menolak menyimpan bila ada galat).
+
+**Nginx — bagian B: vhost tulis sendiri** (tanpa aaPanel). Seluruh blok `server`; isi bagian 1–4 sama persis dengan
+bagian A, ditambah lokasi PHP. Sesuaikan `root` dan `fastcgi_pass`:
 
 ```nginx
 server {
-    # listen, server_name, ssl_certificate ... (biarkan seperti buatan aaPanel)
+    # listen, server_name, ssl_certificate ...
     root  /www/wwwroot/siap.man2kotamadiun.sch.id;
     index index.php;
 
-    # 1) Folder internal: tidak boleh dibuka dari browser (dipakai PHP lewat filesystem saja)
-    location ~ ^/(config|includes|database|portal_siswa)(/|$) { deny all; return 404; }
-
-    # 2) Berkas sensitif di mana pun: dump SQL, dokumentasi, .htaccess/.user.ini/.git, backup
-    location ~* \.(sql|md|ini|log|bak|sh)$ { deny all; return 404; }
-    location ~ /\.(?!well-known/) { deny all; return 404; }
-
-    # 3) Unggahan: surat izin/dokter (data kesehatan) ditolak total; folder lain hanya berkas statis,
-    #    PHP TIDAK PERNAH dieksekusi di bawah /uploads/
-    location ^~ /uploads/izin/ { deny all; return 404; }
-    location ^~ /uploads/ {
-        location ~ \.(php|phtml|phar|php\d)$ { deny all; return 404; }
-    }
-
-    # 4) URL bersih: /login -> login.php, /siswa/123 -> index.php (router)
-    location / { try_files $uri $uri/ @siap; }
-    location @siap {
-        if (-f $document_root$uri.php) { rewrite ^ $uri.php last; }
-        rewrite ^ /index.php last;
-    }
+    # --- tempel bagian 1–4 dari blok A di sini ---
 
     # 5) PHP
     location ~ \.php$ {
         try_files $uri =404;
-        fastcgi_pass unix:/tmp/php-cgi-82.sock;   # sesuaikan versi PHP aaPanel
+        fastcgi_pass unix:/tmp/php-cgi-82.sock;   # sesuaikan versi/socket PHP
         fastcgi_index index.php;
         include fastcgi.conf;
     }
@@ -433,7 +448,10 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
 
 ## 11. UPGRADE DARI VERSI SEBELUMNYA
 
-Lakukan berurutan, **sebelum** menimpa kode lama:
+Lakukan berurutan, **sebelum** menimpa kode lama.
+
+> **Cek sebelum upload:** apakah `config/database.local.php` sudah ada di server? Bila belum, situs langsung
+> menampilkan 503 dengan kode kejadian berisi "config/database.local.php belum dibuat".
 
 1. **Pindahkan konfigurasi.** Catat nilai `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, dan `BASE_URL` dari
    `config/database.php` yang lama, lalu buat `config/database.local.php` (salin dari `config/database.example.php`)
@@ -446,7 +464,8 @@ Lakukan berurutan, **sebelum** menimpa kode lama:
    - `database/migration_keamanan.sql` — kolom wajib ganti password (dan kolom keamanan lain, lihat isi file).
    Instalasi baru cukup import `database/database.sql` (sudah berisi semuanya); jangan import ulang file itu ke
    database yang sudah berisi data.
-3. **Nginx**: bila server memakai Nginx, ganti aturan lama dengan blok lengkap di bagian 6, lalu reload Nginx.
+3. **Nginx**: bila server memakai Nginx, ganti aturan lama dengan blok di bagian 6 (A untuk kotak *URL rewrite* aaPanel,
+   B untuk vhost tulis sendiri), lalu reload Nginx.
    Hapus `database/*.sql` dari server produksi setelah migrasi.
 4. **Password admin bawaan**: setiap akun yang masih memakai password bawaan akan dipaksa menggantinya saat login
    berikutnya (menu lain terkunci sampai password diganti).

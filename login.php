@@ -44,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           if ($user && password_verify($password, $user['password'])) {
             session_regenerate_id(true);
             $_SESSION['admin_id'] = $user['id'];
+            unset($_SESSION['wajib_ganti_password']);
             $_SESSION['last_regen'] = time();
             login_bersihkan($username);
             catat_aktivitas('LOGIN', 'login', 'Login berhasil: ' . $user['username']);

@@ -583,7 +583,9 @@ function peringatan_keamanan_presensi(): array
     } elseif ((string) ($s['latitude_sekolah'] ?? '') === '-7.1234567' && (string) ($s['longitude_sekolah'] ?? '') === '111.1234567') {
         $w[] = '<strong>Koordinat sekolah masih nilai contoh.</strong> Semua presensi akan ditolak "di luar area sekolah". Isi koordinat asli di Pengaturan &rarr; Geolocation / GPS.';
     }
-    if (!array_key_exists('qr_kelas_permanen', $s) || (int) $s['qr_kelas_permanen'] === 1) {
+    if (!array_key_exists('qr_kelas_permanen', $s)) {
+        $w[] = '<strong>QR Kelas masih mode permanen</strong> dan pengaturannya belum tersedia karena akun database tidak punya hak ALTER. Jalankan <code>database/migration_keamanan.sql</code> (phpMyAdmin &rarr; Import), lalu matikan "QR Kelas permanen" di Pengaturan.';
+    } elseif ((int) $s['qr_kelas_permanen'] === 1) {
         $w[] = '<strong>QR Kelas masih mode permanen.</strong> Foto QR kelas yang tersebar tetap bisa dipakai selamanya. Matikan "QR Kelas permanen" di Pengaturan agar QR kelas memakai token bertanda waktu (tampilkan di layar kelas).';
     }
     return $w;

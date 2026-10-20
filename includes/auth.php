@@ -125,10 +125,15 @@ function siapkan_kolom_wajib_ganti_password(): bool
     }
 }
 
-/** Apakah pengguna yang sedang login wajib mengganti password? (kolom belum ada = tidak) */
+/**
+ * Apakah pengguna yang sedang login wajib mengganti password? Sumber: kolom users.must_change_password,
+ * atau penanda sesi bila kolom itu tidak bisa dibuat (akun database tanpa hak ALTER dan
+ * migration_keamanan.sql belum dijalankan) — supaya paksaan ganti password tidak diam-diam mati.
+ */
 function admin_wajib_ganti_password(): bool
 {
     if (!is_logged_in()) return false;
+    if (!empty($_SESSION['wajib_ganti_password'])) return true;
     try {
         $st = getDB()->prepare('SELECT must_change_password FROM users WHERE id = :id LIMIT 1');
         $st->execute([':id' => $_SESSION['admin_id']]);
@@ -140,13 +145,22 @@ function admin_wajib_ganti_password(): bool
 
 function tandai_wajib_ganti_password(int $userId, bool $wajib): void
 {
-    if (!siapkan_kolom_wajib_ganti_password()) return;
-    try {
-        getDB()->prepare('UPDATE users SET must_change_password = :w WHERE id = :id')
-               ->execute([':w' => $wajib ? 1 : 0, ':id' => $userId]);
-    } catch (Throwable $e) {
-        error_log('tandai_wajib_ganti_password: ' . $e->getMessage());
+    $tersimpan = false;
+    if (siapkan_kolom_wajib_ganti_password()) {
+        try {
+            getDB()->prepare('UPDATE users SET must_change_password = :w WHERE id = :id')
+                   ->execute([':w' => $wajib ? 1 : 0, ':id' => $userId]);
+            $tersimpan = true;
+        } catch (Throwable $e) {
+            error_log('tandai_wajib_ganti_password: ' . $e->getMessage());
+        }
     }
+    // Cadangan: penanda di sesi (hanya untuk pengguna yang sedang login).
+    if (!$tersimpan && $wajib && (int) ($_SESSION['admin_id'] ?? 0) === $userId) {
+        $_SESSION['wajib_ganti_password'] = true;
+        error_log('SIAP: kolom users.must_change_password tidak tersedia; jalankan database/migration_keamanan.sql. Paksaan ganti password memakai sesi.');
+    }
+    if (!$wajib) unset($_SESSION['wajib_ganti_password']);
 }
 
 /** Password bawaan yang tidak boleh dipakai lagi. */

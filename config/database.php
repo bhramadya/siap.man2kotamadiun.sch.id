@@ -14,6 +14,10 @@
 if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; }
 
 $__siapConfig = [];
+// Konfigurasi lokal ada? (file local ATAU variabel lingkungan SIAP_DB_*). Bila tidak, koneksi memakai
+// bawaan root/tanpa password dan gagal; pesan 503 + error_log lalu menyebut penyebabnya dengan jelas.
+define('SIAP_CONFIG_LOKAL_ADA', is_file(__DIR__ . '/database.local.php')
+    || getenv('SIAP_DB_NAME') !== false || getenv('SIAP_DB_USER') !== false || getenv('SIAP_DB_HOST') !== false);
 if (is_file(__DIR__ . '/database.local.php')) {
     $__siapConfig = require __DIR__ . '/database.local.php';
     if (!is_array($__siapConfig)) $__siapConfig = [];
@@ -41,14 +45,25 @@ define('DB_CHARSET', 'utf8mb4');
  */
 function siap_tebak_base_url(): string
 {
-    if (PHP_SAPI === 'cli' || empty($_SERVER['HTTP_HOST'])) return 'http://localhost';
+    // SERVER_NAME (dari konfigurasi server), BUKAN header Host kiriman klien: Host bisa dipalsukan
+    // (redirect / isi QR / cache poisoning ke domain lain).
+    $nama = (string) ($_SERVER['SERVER_NAME'] ?? '');
+    if (PHP_SAPI === 'cli' || $nama === '' || $nama === '_') return 'http://localhost';
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443';
-    $host  = preg_replace('/[^A-Za-z0-9.\-:\[\]]/', '', (string) $_SERVER['HTTP_HOST']);
+    $host  = preg_replace('/[^A-Za-z0-9.\-:\[\]]/', '', $nama);
+    $port  = (int) ($_SERVER['SERVER_PORT'] ?? 0);
+    if ($port > 0 && !in_array($port, [80, 443], true) && strpos($host, ':') === false) $host .= ':' . $port;
     $path  = '';
     $root  = realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
     $app   = realpath(dirname(__DIR__));
     if ($root && $app && strpos($app, $root) === 0) $path = str_replace('\\', '/', substr($app, strlen($root)));
-    error_log('SIAP: BASE_URL belum diatur di config/database.local.php; memakai tebakan otomatis.');
+    // Peringatan cukup sekali (penanda di folder temp), bukan di setiap permintaan.
+    $penanda = rtrim(sys_get_temp_dir(), '/\\') . '/siap_base_url_' . md5(__DIR__);
+    if (!@is_file($penanda)) {
+        error_log('SIAP: base_url belum diatur di config/database.local.php; memakai tebakan dari SERVER_NAME: '
+            . ($https ? 'https' : 'http') . '://' . $host . $path);
+        @touch($penanda);
+    }
     return ($https ? 'https' : 'http') . '://' . $host . $path;
 }
 
@@ -103,6 +118,11 @@ function tampilkan_error_database(Throwable $e): void
 {
     $kode = 'DB-' . strtoupper(bin2hex(random_bytes(3)));
     error_log('DB Connection Error [' . $kode . ']: ' . $e->getMessage());
+    if (!SIAP_CONFIG_LOKAL_ADA) {
+        // Penyebab paling umum setelah upgrade: konfigurasi lokal belum dibuat.
+        error_log('SIAP [' . $kode . ']: config/database.local.php belum dibuat (dan SIAP_DB_* tidak ada); lihat README bagian 11.');
+        $kode .= ' — config/database.local.php belum dibuat; lihat README bagian 11';
+    }
 
     if (PHP_SAPI === 'cli') {
         fwrite(STDERR, "Koneksi database gagal [$kode]\n");

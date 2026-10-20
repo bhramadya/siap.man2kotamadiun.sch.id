@@ -51,8 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Anda wajib mengganti password bawaan. Isi password baru dan konfirmasinya.';
     }
     if (!$errors && $gantiPassword) {
-        if (strlen($passwordBaru) < 6) {
-            $errors[] = 'Password baru minimal 6 karakter.';
+        if (strlen($passwordBaru) < 8) {
+            $errors[] = 'Password baru minimal 8 karakter.';
         } elseif ($passwordBaru !== $passwordKonfirmasi) {
             $errors[] = 'Konfirmasi password baru tidak cocok.';
         } elseif (in_array(strtolower($passwordBaru), PASSWORD_BAWAAN, true) || hash_equals($passwordSaatIni, $passwordBaru)) {
@@ -182,7 +182,7 @@ $aktifAkun = ($user['status'] ?? '') === 'aktif';
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Password Baru</label>
-                            <input type="password" name="password_baru" class="form-control" placeholder="Minimal 6 karakter">
+                            <input type="password" name="password_baru" class="form-control" placeholder="Minimal 8 karakter">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Konfirmasi Password Baru</label>
