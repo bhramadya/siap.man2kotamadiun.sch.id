@@ -259,6 +259,16 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   INDEX `idx_la_ip` (`ip_address`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- IP dikenal: IP dengan login berhasil per akun (pengecualian pembatas login, 30 hari)
+CREATE TABLE IF NOT EXISTS `login_ip_dikenal` (
+  `jenis` VARCHAR(10) NOT NULL,
+  `akun` VARCHAR(60) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL,
+  `terakhir_berhasil` DATETIME NOT NULL,
+  PRIMARY KEY (`jenis`, `akun`, `ip_address`),
+  INDEX `idx_ipk_waktu` (`terakhir_berhasil`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Portal siswa (sama dengan database/migration_akun_siswa.sql)
 CREATE TABLE IF NOT EXISTS siswa_akun (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

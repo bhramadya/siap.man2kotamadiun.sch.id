@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($sisaKunci > 0) {
           // Terlalu banyak percobaan gagal: jangan periksa password sama sekali.
           security_log(null, 'ADMIN_LOGIN_LOCKED', null, 'Login diblokir sementara untuk username: ' . substr($username, 0, 50));
-          $error = 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . (int) ceil($sisaKunci / 60) . ' menit.';
+          $error = 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . teks_waktu_tunggu($sisaKunci) . '.';
           usleep(300000);
         } else {
           $stmt = getDB()->prepare('SELECT * FROM users WHERE username = :u AND status = "aktif" LIMIT 1');
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           exit;
         }
         $error = !empty($hasilSiswa['terkunci'])
-          ? 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . (int) ceil($hasilSiswa['sisa'] / 60) . ' menit.'
+          ? 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . teks_waktu_tunggu((int) $hasilSiswa['sisa']) . '.'
           : 'Username atau password salah.';
         usleep(300000);
       }

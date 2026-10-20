@@ -657,16 +657,35 @@ function security_log(?int $siswaId, string $event, ?string $deviceHash = null, 
 
 // ---------------------------------------------------------------------
 // PEMBATAS PERCOBAAN LOGIN (anti brute force)
-// Penguncian KERAS per pasangan USERNAME + IP dan per IP, bukan per username saja: dulu siapa pun
-// bisa membuat akun admin terkunci terus-menerus cukup dengan salah password berulang. Batas global
-// per username sengaja jauh lebih longgar (hanya menahan serangan dari banyak IP sekaligus).
+// Aturan (berlaku sama untuk login petugas dan portal siswa, lihat pembatas_sisa()):
+//  1. Kunci KERAS per akun + IP (5 gagal / 15 menit) — juga untuk IP yang dikenal.
+//  2. Kunci KERAS per IP (20 gagal / 15 menit) — KECUALI "IP dikenal" akun itu, yaitu IP yang pernah
+//     login berhasil ke akun tsb dalam 30 hari terakhir. Jadi siswa di balik NAT Wi-Fi sekolah tidak
+//     bisa mengunci petugas yang biasa login dari jaringan yang sama.
+//  3. Batas global per akun dari IP mana pun TIDAK mengunci. Di atas ambang, IP yang tidak dikenal
+//     hanya boleh satu pemeriksaan password per akun setiap N detik (N naik bertahap 1 -> 60 detik),
+//     sehingga tebakan terdistribusi (botnet / banyak IPv6) dibatasi ±1.440/hari, sementara pemilik
+//     akun dari IP yang dikenal tidak terpengaruh sama sekali.
+// IPv6 dihitung per blok /64 (satu VPS biasanya memegang seluruh /64).
 // Tabel dibuat otomatis; bila gagal dibuat/dibaca, login tetap berjalan (fail-open)
 // dan error dicatat di error_log agar admin tidak terkunci karena masalah database.
 // ---------------------------------------------------------------------
-const LOGIN_MAKS_GAGAL_USER_IP = 5;    // gagal per username dari IP yang sama
-const LOGIN_MAKS_GAGAL_IP      = 20;   // gagal per IP (semua username)
-const LOGIN_MAKS_GAGAL_USER    = 100;  // gagal per username dari IP mana pun (serangan terdistribusi)
+const LOGIN_MAKS_GAGAL_USER_IP = 5;    // gagal per username dari IP yang sama (kunci keras)
+const LOGIN_MAKS_GAGAL_IP      = 20;   // gagal per IP, semua username (kunci keras; IP dikenal dikecualikan)
+const LOGIN_AMBANG_USER        = 100;  // gagal per username dari IP mana pun -> jeda bertahap utk IP tak dikenal
 const LOGIN_JENDELA_DETIK      = 900;  // 15 menit
+const IP_DIKENAL_HARI          = 30;   // IP dengan login berhasil dalam 30 hari terakhir = "IP dikenal"
+const JEDA_MAKS_DETIK          = 60;
+
+/** Kunci IP untuk pembatas: IPv4 utuh, IPv6 dipotong ke prefiks /64 (mis. "2001:db8:1:2::/64"). */
+function kunci_ip_pembatas(?string $ip = null): string
+{
+    $ip = $ip ?? get_client_ip();
+    $bin = @inet_pton($ip);
+    if ($bin === false) return substr($ip, 0, 45);
+    if (strlen($bin) === 16) return inet_ntop(substr($bin, 0, 8) . str_repeat("\0", 8)) . '/64';
+    return $ip;
+}
 
 /**
  * Sisa detik penguncian berdasarkan daftar kondisi. $tabel/$kolom/$w/$maks selalu konstanta
@@ -688,6 +707,91 @@ function hitung_sisa_kunci(PDO $db, string $tabel, int $w, array $aturan): int
         if (count($umur) >= $maks) $sisa = max($sisa, max(1, $w - (int) end($umur))); // terkunci sampai kegagalan ke-$maks keluar dari jendela
     }
     return $sisa;
+}
+
+/** Tabel IP dikenal (login berhasil per akun). SQL manual: database/migration_keamanan.sql. */
+function ip_dikenal_siapkan_tabel(): bool
+{
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        getDB()->exec('CREATE TABLE IF NOT EXISTS login_ip_dikenal (
+            jenis VARCHAR(10) NOT NULL,
+            akun VARCHAR(60) NOT NULL,
+            ip_address VARCHAR(45) NOT NULL,
+            terakhir_berhasil DATETIME NOT NULL,
+            PRIMARY KEY (jenis, akun, ip_address),
+            INDEX idx_ipk_waktu (terakhir_berhasil)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+        return $ok = true;
+    } catch (Throwable $e) {
+        error_log('ip_dikenal_siapkan_tabel: ' . $e->getMessage());
+        return $ok = false;
+    }
+}
+
+/** Apakah IP saat ini pernah login berhasil ke akun ini dalam IP_DIKENAL_HARI hari terakhir? */
+function ip_dikenal(string $jenis, string $akun): bool
+{
+    if (!ip_dikenal_siapkan_tabel()) return false;
+    try {
+        $st = getDB()->prepare('SELECT 1 FROM login_ip_dikenal WHERE jenis = :j AND akun = :a AND ip_address = :ip
+                                AND terakhir_berhasil > (NOW() - INTERVAL ' . (int) IP_DIKENAL_HARI . ' DAY) LIMIT 1');
+        $st->execute([':j' => $jenis, ':a' => substr($akun, 0, 60), ':ip' => kunci_ip_pembatas()]);
+        return (bool) $st->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('ip_dikenal: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function ip_dikenal_catat(string $jenis, string $akun): void
+{
+    if (!ip_dikenal_siapkan_tabel()) return;
+    try {
+        $db = getDB();
+        $db->prepare('INSERT INTO login_ip_dikenal (jenis, akun, ip_address, terakhir_berhasil) VALUES (:j, :a, :ip, NOW())
+                      ON DUPLICATE KEY UPDATE terakhir_berhasil = NOW()')
+           ->execute([':j' => $jenis, ':a' => substr($akun, 0, 60), ':ip' => kunci_ip_pembatas()]);
+        if (random_int(1, 50) === 1) {
+            $db->exec('DELETE FROM login_ip_dikenal WHERE terakhir_berhasil < (NOW() - INTERVAL ' . (int) IP_DIKENAL_HARI . ' DAY)');
+        }
+    } catch (Throwable $e) {
+        error_log('ip_dikenal_catat: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Sisa detik sebelum akun ini boleh dicoba lagi dari IP ini (0 = boleh). Lihat aturan di atas.
+ * $tabel/$kolomAkun adalah konstanta pemanggil ('login_attempts'/'username' atau 'portal_attempts'/'kunci').
+ */
+function pembatas_sisa(string $tabel, string $kolomAkun, string $jenis, string $akun,
+                       int $maksAkunIp, int $maksIp, int $ambangAkun, int $w): int
+{
+    $db = getDB();
+    $ip = kunci_ip_pembatas();
+    $dikenal = ip_dikenal($jenis, $akun);
+    $aturan = [[[$kolomAkun => $akun, 'ip_address' => $ip], $maksAkunIp]];
+    if (!$dikenal) $aturan[] = [['ip_address' => $ip], $maksIp];
+    $sisa = hitung_sisa_kunci($db, $tabel, $w, $aturan);
+    if ($sisa > 0 || $dikenal) return $sisa;
+
+    // Batas global per akun: jeda bertahap (bukan kunci) untuk IP yang tidak dikenal.
+    $st = $db->prepare("SELECT COUNT(*) n, COALESCE(MIN(TIMESTAMPDIFF(SECOND, created_at, NOW())), 0) lalu FROM $tabel
+                        WHERE $kolomAkun = :a AND created_at > (NOW() - INTERVAL $w SECOND)");
+    $st->execute([':a' => $akun]);
+    $r = $st->fetch();
+    $n = (int) ($r['n'] ?? 0);
+    if ($n < $ambangAkun) return 0;
+    $jeda = min(JEDA_MAKS_DETIK, 2 ** min(6, intdiv($n - $ambangAkun, 20)));   // 1, 2, 4, ... 60 detik
+    $lalu = (int) ($r['lalu'] ?? 0);                                            // detik sejak kegagalan terakhir (IP mana pun)
+    return $lalu < $jeda ? $jeda - $lalu : 0;
+}
+
+/** "45 detik" / "3 menit" untuk pesan tunggu. */
+function teks_waktu_tunggu(int $detik): string
+{
+    return $detik < 60 ? max(1, $detik) . ' detik' : (int) ceil($detik / 60) . ' menit';
 }
 
 function login_siapkan_tabel(): bool
@@ -715,18 +819,13 @@ function login_normalisasi_username(string $username): string
     return mb_strtolower(mb_substr(trim($username), 0, 50, 'UTF-8'), 'UTF-8');
 }
 
-/** Sisa detik penguncian (0 = boleh mencoba login). */
+/** Sisa detik penguncian / jeda (0 = boleh mencoba login). */
 function login_kunci_sisa(string $username): int
 {
     if (!login_siapkan_tabel()) return 0;
     try {
-        $u  = login_normalisasi_username($username);
-        $ip = substr(get_client_ip(), 0, 45);
-        return hitung_sisa_kunci(getDB(), 'login_attempts', LOGIN_JENDELA_DETIK, [
-            [['username' => $u, 'ip_address' => $ip], LOGIN_MAKS_GAGAL_USER_IP],
-            [['ip_address' => $ip], LOGIN_MAKS_GAGAL_IP],
-            [['username' => $u], LOGIN_MAKS_GAGAL_USER],
-        ]);
+        return pembatas_sisa('login_attempts', 'username', 'admin', login_normalisasi_username($username),
+            LOGIN_MAKS_GAGAL_USER_IP, LOGIN_MAKS_GAGAL_IP, LOGIN_AMBANG_USER, LOGIN_JENDELA_DETIK);
     } catch (Throwable $e) {
         error_log('login_kunci_sisa: ' . $e->getMessage());
         return 0;
@@ -739,7 +838,7 @@ function login_catat_gagal(string $username): void
     try {
         $db = getDB();
         $db->prepare('INSERT INTO login_attempts (username, ip_address, created_at) VALUES (:u, :ip, NOW())')
-           ->execute([':u' => login_normalisasi_username($username), ':ip' => substr(get_client_ip(), 0, 45)]);
+           ->execute([':u' => login_normalisasi_username($username), ':ip' => kunci_ip_pembatas()]);
         if (random_int(1, 20) === 1) { // bersih-bersih data lama sesekali
             $db->exec('DELETE FROM login_attempts WHERE created_at < (NOW() - INTERVAL 1 DAY)');
         }
@@ -748,12 +847,18 @@ function login_catat_gagal(string $username): void
     }
 }
 
+/**
+ * Login berhasil: hapus kegagalan akun ini HANYA dari IP ini (riwayat penyerang di IP lain tetap
+ * dihitung), lalu catat IP ini sebagai "IP dikenal" akun tsb.
+ */
 function login_bersihkan(string $username): void
 {
+    $u = login_normalisasi_username($username);
+    ip_dikenal_catat('admin', $u);
     if (!login_siapkan_tabel()) return;
     try {
-        getDB()->prepare('DELETE FROM login_attempts WHERE username = :u')
-               ->execute([':u' => login_normalisasi_username($username)]);
+        getDB()->prepare('DELETE FROM login_attempts WHERE username = :u AND ip_address = :ip')
+               ->execute([':u' => $u, ':ip' => kunci_ip_pembatas()]);
     } catch (Throwable $e) {
         error_log('login_bersihkan: ' . $e->getMessage());
     }

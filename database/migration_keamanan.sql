@@ -64,3 +64,14 @@ SET @sql := (SELECT IF(COUNT(*) = 0,
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = 'device_legacy_until');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 7) login_ip_dikenal: IP yang pernah login berhasil ke sebuah akun (30 hari). IP ini dikecualikan dari
+--    kunci per-IP dan dari jeda global, sehingga pemilik akun tetap bisa masuk saat akunnya diserang.
+CREATE TABLE IF NOT EXISTS `login_ip_dikenal` (
+  `jenis` VARCHAR(10) NOT NULL,
+  `akun` VARCHAR(60) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL,
+  `terakhir_berhasil` DATETIME NOT NULL,
+  PRIMARY KEY (`jenis`, `akun`, `ip_address`),
+  INDEX `idx_ipk_waktu` (`terakhir_berhasil`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

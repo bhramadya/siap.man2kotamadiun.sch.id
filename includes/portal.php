@@ -25,7 +25,7 @@ const PORTAL_KODE_KUNCI_MENIT = 15;
 const PORTAL_PASSWORD_MIN     = 8;
 const PORTAL_MAKS_GAGAL_NISN  = 5;                                 // gagal login per NISN dari IP yang sama / 15 menit
 const PORTAL_MAKS_GAGAL_IP    = 100;                               // longgar: Wi-Fi sekolah = 1 IP untuk banyak siswa
-const PORTAL_MAKS_GAGAL_NISN_GLOBAL = 30;                          // per NISN dari IP mana pun (serangan dari banyak IP)
+const PORTAL_AMBANG_NISN      = 30;                                // per NISN dari IP mana pun -> jeda bertahap (bukan kunci)
 const PORTAL_JENDELA_DETIK    = 900;
 const PORTAL_IDLE_DETIK       = 7200;                              // 2 jam tanpa aktivitas -> keluar
 const PORTAL_DUMMY_HASH       = '$2y$10$oC/uUCVb5K6tvr9/kKopY.B3ajcc2Gto/s28srtKZOUAdsHWdwxQy';                  // pembanding agar waktu respons NISN tak dikenal = NISN dikenal
@@ -129,15 +129,10 @@ function portal_aktif(): bool
 function portal_kunci_sisa(string $kunci): int
 {
     try {
-        // Kunci keras per NISN + IP (orang lain di jaringan lain tidak bisa mengunci siswa ini),
-        // per IP, dan batas global per NISN yang lebih longgar.
-        $k  = substr($kunci, 0, 60);
-        $ip = substr(get_client_ip(), 0, 45);
-        return hitung_sisa_kunci(getDB(), 'portal_attempts', PORTAL_JENDELA_DETIK, [
-            [['kunci' => $k, 'ip_address' => $ip], PORTAL_MAKS_GAGAL_NISN],
-            [['ip_address' => $ip], PORTAL_MAKS_GAGAL_IP],
-            [['kunci' => $k], PORTAL_MAKS_GAGAL_NISN_GLOBAL],
-        ]);
+        // Aturan sama dengan login petugas (lihat pembatas_sisa() di functions.php): kunci keras per
+        // NISN + IP dan per IP (IP dikenal dikecualikan), jeda bertahap di atas ambang global per NISN.
+        return pembatas_sisa('portal_attempts', 'kunci', 'portal', substr($kunci, 0, 60),
+            PORTAL_MAKS_GAGAL_NISN, PORTAL_MAKS_GAGAL_IP, PORTAL_AMBANG_NISN, PORTAL_JENDELA_DETIK);
     } catch (Throwable $e) {
         error_log('portal_kunci_sisa: ' . $e->getMessage());
         return 0;
@@ -149,17 +144,20 @@ function portal_catat_gagal(string $kunci): void
     try {
         $db = getDB();
         $db->prepare('INSERT INTO portal_attempts (kunci, ip_address, created_at) VALUES (:k, :ip, NOW())')
-           ->execute([':k' => substr($kunci, 0, 60), ':ip' => substr(get_client_ip(), 0, 45)]);
+           ->execute([':k' => substr($kunci, 0, 60), ':ip' => kunci_ip_pembatas()]);
         if (random_int(1, 20) === 1) $db->exec('DELETE FROM portal_attempts WHERE created_at < (NOW() - INTERVAL 1 DAY)');
     } catch (Throwable $e) {
         error_log('portal_catat_gagal: ' . $e->getMessage());
     }
 }
 
+/** Berhasil: hapus kegagalan kunci ini hanya dari IP ini, dan catat IP ini sebagai IP dikenal. */
 function portal_bersihkan_gagal(string $kunci): void
 {
+    ip_dikenal_catat('portal', substr($kunci, 0, 60));
     try {
-        getDB()->prepare('DELETE FROM portal_attempts WHERE kunci = :k')->execute([':k' => substr($kunci, 0, 60)]);
+        getDB()->prepare('DELETE FROM portal_attempts WHERE kunci = :k AND ip_address = :ip')
+               ->execute([':k' => substr($kunci, 0, 60), ':ip' => kunci_ip_pembatas()]);
     } catch (Throwable $e) {
         error_log('portal_bersihkan_gagal: ' . $e->getMessage());
     }
@@ -167,8 +165,7 @@ function portal_bersihkan_gagal(string $kunci): void
 
 function portal_menit_teks(int $detik): string
 {
-    $m = (int) ceil($detik / 60);
-    return $m . ' menit';
+    return teks_waktu_tunggu($detik);
 }
 
 // ---------------------------------------------------------------------
