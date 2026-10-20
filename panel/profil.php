@@ -11,6 +11,7 @@ $user = $stmt->fetch();
 
 $errors = [];
 $success = false;
+$wajibGanti = admin_wajib_ganti_password();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_require();
@@ -46,11 +47,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // --- Password baru bersifat opsional: kalau diisi, wajib valid & cocok ---
     $gantiPassword = ($passwordBaru !== '' || $passwordKonfirmasi !== '');
+    if (!$errors && $wajibGanti && !$gantiPassword) {
+        $errors[] = 'Anda wajib mengganti password bawaan. Isi password baru dan konfirmasinya.';
+    }
     if (!$errors && $gantiPassword) {
         if (strlen($passwordBaru) < 6) {
             $errors[] = 'Password baru minimal 6 karakter.';
         } elseif ($passwordBaru !== $passwordKonfirmasi) {
             $errors[] = 'Konfirmasi password baru tidak cocok.';
+        } elseif (in_array(strtolower($passwordBaru), PASSWORD_BAWAAN, true) || hash_equals($passwordSaatIni, $passwordBaru)) {
+            $errors[] = 'Password baru tidak boleh sama dengan password lama atau password bawaan.';
         }
     }
 
@@ -70,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([':nama' => $nama, ':username' => $username, ':id' => $admin['id']]);
         }
 
+        if ($gantiPassword) tandai_wajib_ganti_password((int) $admin['id'], false);
         catat_aktivitas('UBAH', 'profil', 'Memperbarui profil akun ' . $username . ($gantiPassword ? ' dan mengganti password' : ''));
         set_flash('success', 'Profil berhasil diperbarui.' . ($gantiPassword ? ' Password baru sudah aktif.' : ''));
         header('Location: ' . modul_url('profil'));
@@ -113,6 +120,12 @@ $tglIndo = function ($v) { return $v ? date('d/m/Y H:i', strtotime($v)) : '-'; }
 $aktifAkun = ($user['status'] ?? '') === 'aktif';
 ?>
 <h4 class="mb-3"><i class="bi bi-person-gear"></i> Profil Saya</h4>
+
+<?php if ($wajibGanti): ?>
+    <div class="alert alert-warning"><i class="bi bi-shield-exclamation"></i>
+        <strong>Wajib ganti password.</strong> Akun ini masih memakai password bawaan. Menu lain terkunci sampai Anda
+        mengisi password saat ini, password baru, dan konfirmasinya di bawah lalu menyimpan.</div>
+<?php endif; ?>
 
 <?php if ($errors): ?>
     <div class="alert alert-danger">

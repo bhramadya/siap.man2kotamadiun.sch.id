@@ -11,8 +11,8 @@
 -- UPGRADE instalasi lama: JANGAN import file ini lagi; jalankan file migration_*.sql
 -- (lihat README bagian "Upgrade dari versi sebelumnya").
 --
--- Akun awal: username `admin`, password `admin123`
--- PENTING: SEGERA ganti password ini setelah login pertama!
+-- Akun awal: username `admin`, password `admin123`. Aplikasi MEMAKSA penggantian
+-- password ini saat login pertama (kolom users.must_change_password).
 -- =====================================================================
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
@@ -144,6 +144,7 @@ CREATE TABLE `users` (
   `password` varchar(255) NOT NULL,
   `role` enum('admin') NOT NULL DEFAULT 'admin',
   `status` enum('aktif','nonaktif') NOT NULL DEFAULT 'aktif',
+  `must_change_password` tinyint(1) NOT NULL DEFAULT '0' COMMENT '1 = wajib ganti password saat login berikutnya',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
@@ -331,8 +332,9 @@ CREATE TABLE IF NOT EXISTS portal_notifikasi (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data awal
-INSERT INTO `users` (`nama`, `username`, `password`, `role`, `status`) VALUES
-('Administrator', 'admin', '$2b$10$b41vg2ko8zqtu.jWTfT48eXiFP5YLFg8U8IxUn7HI76kcI5upq7Ha', 'admin', 'aktif');
+-- admin / admin123: WAJIB diganti saat login pertama (must_change_password = 1)
+INSERT INTO `users` (`nama`, `username`, `password`, `role`, `status`, `must_change_password`) VALUES
+('Administrator', 'admin', '$2b$10$b41vg2ko8zqtu.jWTfT48eXiFP5YLFg8U8IxUn7HI76kcI5upq7Ha', 'admin', 'aktif', 1);
 
 INSERT INTO `settings`
   (`nama_sekolah`, `tahun_pelajaran`, `jam_masuk`, `batas_terlambat`,

@@ -47,8 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['last_regen'] = time();
             login_bersihkan($username);
             catat_aktivitas('LOGIN', 'login', 'Login berhasil: ' . $user['username']);
-            if ($password === 'admin123') {
-              set_flash('warning', 'Password Anda masih password bawaan (admin123). Segera ganti di menu Profil Akun.');
+            // Password bawaan -> WAJIB diganti dulu (require_login() mengalihkan semua halaman ke Profil).
+            if (in_array($password, PASSWORD_BAWAAN, true)) {
+              tandai_wajib_ganti_password((int) $user['id'], true);
+            }
+            if (admin_wajib_ganti_password()) {
+              set_flash('warning', 'Anda masih memakai password bawaan. Ganti password terlebih dahulu sebelum memakai panel.');
+              header('Location: ' . modul_url('profil'));
+              exit;
             }
             header('Location: index.php?modul=dashboard');
             exit;

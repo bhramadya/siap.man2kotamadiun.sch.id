@@ -213,7 +213,9 @@ halaman internal.
 
 ## 7. AKUN & DATA DEFAULT
 
-- **Admin:** `admin` / `admin123` — ⚠️ **ganti segera** setelah login pertama (menu Profil).
+- **Admin awal:** username `admin`, password bawaan dari `database.sql`. Saat login pertama aplikasi **memaksa
+  penggantian password**: semua halaman panel dialihkan ke Profil sampai password baru disimpan (kolom
+  `users.must_change_password`). Akun mana pun yang login dengan password bawaan (mis. `admin123`) ikut ditandai.
 - Tidak ada data siswa bawaan; tambahkan lewat Data Siswa atau Import.
 - **Pengaturan awal:** jam masuk `07:00`, batas terlambat `07:15`, GPS nonaktif,
   validasi IP nonaktif, Device Binding **aktif**, QR gerbang 120 detik,
@@ -405,7 +407,10 @@ Lakukan berurutan, **sebelum** menimpa kode lama:
    ulang (idempoten) dan sama persis dengan tabel yang dibuat otomatis oleh aplikasi:
    - `database/migration_akun_siswa.sql` — tabel `siswa_akun`, `portal_attempts`, kolom `settings.portal_siswa_aktif`.
    - `database/migration_izin.sql` — tabel `izin_pengajuan`, `izin_hari`, `portal_notifikasi`.
+   - `database/migration_keamanan.sql` — kolom wajib ganti password (dan kolom keamanan lain, lihat isi file).
    Instalasi baru cukup import `database/database.sql` (sudah berisi semuanya); jangan import ulang file itu ke
    database yang sudah berisi data.
 3. **Nginx**: bila server memakai Nginx, ganti aturan lama dengan blok lengkap di bagian 6, lalu reload Nginx.
    Hapus `database/*.sql` dari server produksi setelah migrasi.
+4. **Password admin bawaan**: setiap akun yang masih memakai password bawaan akan dipaksa menggantinya saat login
+   berikutnya (menu lain terkunci sampai password diganti).

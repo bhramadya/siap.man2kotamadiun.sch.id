@@ -50,6 +50,17 @@ function require_login(): void
         exit;
     }
 
+    // Password bawaan / wajib diganti -> semua halaman panel dialihkan ke Profil sampai password diganti.
+    if (admin_wajib_ganti_password() && modul_saat_ini() !== 'profil') {
+        if (!empty($_REQUEST['modal'])) {
+            echo '<div class="alert alert-warning mb-0">Ganti password Anda terlebih dahulu di menu Profil.</div>';
+            exit;
+        }
+        set_flash('warning', 'Demi keamanan, ganti password Anda terlebih dahulu sebelum memakai panel.');
+        header('Location: ' . modul_url('profil'));
+        exit;
+    }
+
     // PENEGAKAN IZIN DI SEMUA JALUR. Sebelumnya izin hanya dicek di index.php (router),
     // sehingga POST langsung ke /panel/xxx.php melewati pengecekan izin role.
     $modul = modul_saat_ini();
@@ -93,6 +104,53 @@ function current_admin(): ?array
     }
     return $admin;
 }
+
+// ---------------------------------------------------------------------
+// WAJIB GANTI PASSWORD (akun bawaan admin/admin123)
+// Kolom users.must_change_password dibuat otomatis; SQL manual: database/migration_keamanan.sql.
+// ---------------------------------------------------------------------
+function siapkan_kolom_wajib_ganti_password(): bool
+{
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $db = getDB();
+        if (!$db->query("SHOW COLUMNS FROM users LIKE 'must_change_password'")->fetch()) {
+            $db->exec("ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0");
+        }
+        return $ok = true;
+    } catch (Throwable $e) {
+        error_log('siapkan_kolom_wajib_ganti_password: ' . $e->getMessage());
+        return $ok = false;
+    }
+}
+
+/** Apakah pengguna yang sedang login wajib mengganti password? (kolom belum ada = tidak) */
+function admin_wajib_ganti_password(): bool
+{
+    if (!is_logged_in()) return false;
+    try {
+        $st = getDB()->prepare('SELECT must_change_password FROM users WHERE id = :id LIMIT 1');
+        $st->execute([':id' => $_SESSION['admin_id']]);
+        return (int) $st->fetchColumn() === 1;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function tandai_wajib_ganti_password(int $userId, bool $wajib): void
+{
+    if (!siapkan_kolom_wajib_ganti_password()) return;
+    try {
+        getDB()->prepare('UPDATE users SET must_change_password = :w WHERE id = :id')
+               ->execute([':w' => $wajib ? 1 : 0, ':id' => $userId]);
+    } catch (Throwable $e) {
+        error_log('tandai_wajib_ganti_password: ' . $e->getMessage());
+    }
+}
+
+/** Password bawaan yang tidak boleh dipakai lagi. */
+const PASSWORD_BAWAAN = ['admin123', 'admin', 'password', '123456', '12345678'];
 
 // ---------------------------------------------------------------------
 // HAK AKSES (role & permission)
