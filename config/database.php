@@ -37,48 +37,136 @@ define('DB_USER', (string) siap_config_nilai($__siapConfig, 'db_user', 'SIAP_DB_
 define('DB_PASS', (string) siap_config_nilai($__siapConfig, 'db_pass', 'SIAP_DB_PASS', ''));
 define('DB_CHARSET', 'utf8mb4');
 
-/**
- * Base URL aplikasi (dipakai untuk redirect, cookie portal, dan isi QR Code siswa), TANPA slash
- * di akhir, mis. https://siap.man2kotamadiun.sch.id atau http://localhost/siap. WAJIB diisi.
- * Bila belum diisi:
- *  - di server web sungguhan (Apache/Nginx/PHP-FPM): halaman 503 "isi base_url di
- *    config/database.local.php". Tidak menebak, karena tebakan bisa diam-diam menjadi
- *    http://localhost (vhost tanpa server_name) atau mengikuti header Host palsu (Apache).
- *  - CLI: http://localhost; server bawaan PHP (php -S, uji lokal): ditebak dari alamat server.
- */
-function siap_tebak_base_url(): string
-{
-    if (PHP_SAPI === 'cli') return 'http://localhost';
-    if (PHP_SAPI !== 'cli-server') {
-        error_log('SIAP: base_url belum diisi di config/database.local.php (atau SIAP_BASE_URL); aplikasi berhenti dengan 503.');
-        tampilkan_halaman_503('CFG-' . strtoupper(bin2hex(random_bytes(3))) . ' — isi base_url di config/database.local.php; lihat README bagian 11', 'CONFIG_MISSING');
-    }
-    $nama = (string) ($_SERVER['SERVER_NAME'] ?? '');
-    if ($nama === '' || $nama === '_') return 'http://localhost';
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443';
-    $host  = preg_replace('/[^A-Za-z0-9.\-:\[\]]/', '', $nama);
-    $port  = (int) ($_SERVER['SERVER_PORT'] ?? 0);
-    if ($port > 0 && !in_array($port, [80, 443], true) && strpos($host, ':') === false) $host .= ':' . $port;
-    $path  = '';
-    $root  = realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''));
-    $app   = realpath(dirname(__DIR__));
-    if ($root && $app && strpos($app, $root) === 0) $path = str_replace('\\', '/', substr($app, strlen($root)));
-    return ($https ? 'https' : 'http') . '://' . $host . $path;
+// ---------------------------------------------------------------------------
+// BASE_URL — base URL aplikasi (dipakai untuk membuat isi QR Code siswa,
+// link, redirect, dan URL aset).
+//
+// BASE_URL TIDAK lagi ditulis manual, supaya satu kode yang sama bisa jalan
+// di localhost (http://siap.test), di tunnel ngrok (https://domain-ngrok),
+// maupun di hosting domain sendiri tanpa perlu mengubah file tiap kali.
+//
+// Urutan prioritas:
+//   1) konstanta SIAP_BASE_URL  -> dari file config/production.php (server VPS)
+//   2) environment variable SIAP_BASE_URL
+//   3) deteksi otomatis dari request (skema + host)
+//
+// Contoh production: https://domainsekolah.sch.id
+// ---------------------------------------------------------------------------
+
+// Override manual untuk subfolder (biasanya TIDAK perlu diisi).
+// Contoh: '/siap' bila aplikasi memang dipasang di dalam folder.
+// Kalau kosong, subfolder dideteksi otomatis dari DOCUMENT_ROOT (lihat
+// siap_base_path()).
+define('BASE_PATH', '');
+
+/** Host cadangan bila tidak ada request HTTP (mis. menjalankan skrip via CLI). */
+const BASE_HOST_DEFAULT = 'siap.test';
+
+// Override produksi (opsional). Salin config/production.php.example menjadi
+// config/production.php lalu isi domainnya. File itu tidak di-commit.
+if (is_file(__DIR__ . '/production.php')) {
+    require_once __DIR__ . '/production.php';
 }
 
-$__siapBase = (string) siap_config_nilai($__siapConfig, 'base_url', 'SIAP_BASE_URL', '');
-define('BASE_URL', rtrim($__siapBase !== '' ? $__siapBase : siap_tebak_base_url(), '/'));
+define('BASE_URL', base_url_aplikasi());
 
-// Kunci rahasia server (penandatangan QR kelas, dsb.). Bila kosong, dibuat otomatis dan
-// disimpan di tabel settings (lihat kunci_rahasia_server() di includes/functions.php).
-define('APP_SECRET', (string) siap_config_nilai($__siapConfig, 'app_secret', 'SIAP_APP_SECRET', ''));
+/**
+ * Base URL lengkap aplikasi.
+ * Mengembalikan override eksplisit bila ada, jika tidak mendeteksi dari request.
+ */
+function base_url_aplikasi(): string
+{
+    // 1) Override eksplisit (konstanta dari config/production.php)
+    $override = defined('SIAP_BASE_URL') ? trim((string) SIAP_BASE_URL) : '';
+    // 2) Override eksplisit (environment variable, mis. di aaPanel/Panel)
+    if ($override === '') {
+        $override = trim((string) (getenv('SIAP_BASE_URL') ?: ''));
+    }
+    // Override = base URL PENUH (sudah termasuk subfolder bila ada).
+    if ($override !== '') {
+        return rtrim($override, '/');
+    }
 
-// Reverse proxy tepercaya (IP atau CIDR). Hanya bila REMOTE_ADDR termasuk daftar ini, header
-// X-Forwarded-For dibaca untuk menentukan IP klien. Kosong = selalu memakai REMOTE_ADDR.
-$__siapProxy = siap_config_nilai($__siapConfig, 'trusted_proxies', 'SIAP_TRUSTED_PROXIES', []);
-if (is_string($__siapProxy)) $__siapProxy = array_filter(array_map('trim', explode(',', $__siapProxy)));
-define('TRUSTED_PROXIES', array_values((array) $__siapProxy));
-unset($__siapConfig, $__siapBase, $__siapProxy);
+    // 3) Deteksi dari request
+    $skema = siap_https_aktif() ? 'https' : 'http';
+    return $skema . '://' . siap_host_request() . siap_base_path();
+}
+
+/**
+ * Subfolder tempat aplikasi berada relatif terhadap document root server.
+ * '' berarti aplikasi dilayani di root domain (mis. vhost siap.test),
+ * '/siap' bila dilayani lewat default vhost (folder D:/laragon/www/siap).
+ * Dideteksi otomatis supaya BASE_URL selalu benar, apa pun cara aplikasinya
+ * dipasang, tanpa perlu mengubah konfigurasi tiap kali.
+ */
+function siap_base_path(): string
+{
+    // Override manual menang.
+    if (defined('BASE_PATH') && BASE_PATH !== '') {
+        return '/' . trim((string) BASE_PATH, '/');
+    }
+
+    $docRoot = (string) ($_SERVER['DOCUMENT_ROOT'] ?? '');
+    $appDir  = realpath(__DIR__ . '/..');           // folder root aplikasi
+    if ($docRoot === '' || $appDir === false) {
+        return '';
+    }
+
+    $docRoot = rtrim(str_replace('\\', '/', (string) realpath($docRoot)), '/');
+    $appDir  = str_replace('\\', '/', (string) $appDir);
+    if ($docRoot !== '' && strpos($appDir, $docRoot . '/') === 0) {
+        return substr($appDir, strlen($docRoot));   // mis. '/siap'
+    }
+    return '';
+}
+
+/**
+ * Host publik yang sedang diakses.
+ *
+ * Sumber utama adalah header Host yang dikirim browser — nilainya sudah
+ * dijamin benar oleh server (ngrok menolak request dengan Host yang tidak
+ * cocok dengan endpoint-nya, dan vhost Apache memverifikasi ServerName).
+ *
+ * X-Forwarded-Host hanya dipakai sebagai cadangan bila Host kosong, dan HANYA
+ * dipercaya bila request datang dari loopback (127.0.0.1 / ::1 = proxy lokal
+ * di mesin ini). Tanpa aturan ini, siapa pun bisa mengarang host sehingga QR
+ * Code yang dicetak (isinya memuat BASE_URL) menunjuk ke domain palsu.
+ */
+function siap_host_request(): string
+{
+    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+
+    if ($host === '') {
+        $remote    = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        $proxyLokal = in_array($remote, ['127.0.0.1', '::1'], true);
+        if ($proxyLokal) {
+            $daftar = array_filter(array_map('trim', explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''))));
+            $host  = (string) end($daftar);
+        }
+    }
+
+    // Sanitasi: hanya izinkan karakter yang lazim pada nama host + port.
+    $host = preg_replace('/[^A-Za-z0-9\.\-:\[\]]/', '', $host) ?? '';
+    return $host !== '' ? $host : BASE_HOST_DEFAULT;
+}
+
+/**
+ * Apakah koneksi pengguna memakai HTTPS (langsung atau lewat reverse proxy).
+ * Fungsi ini dipakai untuk BASE_URL sekaligus untuk cookie sesi "secure".
+ *
+ * Untuk X-Forwarded-Proto dipakai NILAI TERAKHIR: proxy menambahkan nilainya
+ * di belakang nilai yang dikirim klien, jadi nilai terakhir yang paling dekat
+ * dengan server dan tidak bisa dipalsukan klien.
+ */
+function siap_https_aktif(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') return true;
+    if ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443') return true;
+
+    $daftar = array_filter(array_map('trim', explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))));
+    $proto  = strtolower((string) end($daftar));
+    return $proto === 'https';
+}
 
 // Zona waktu server — WAJIB konsisten agar validasi jam presensi akurat.
 date_default_timezone_set('Asia/Jakarta');
