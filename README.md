@@ -53,7 +53,8 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 ```
 ├── index.php            → router URL bersih (/siswa, /absensi, ...) + beranda publik
 ├── beranda.php, login.php, logout.php
-├── config/database.php
+├── config/database.php          → pemuat konfigurasi + koneksi PDO (tanpa kredensial)
+├── config/database.example.php  → contoh; salin menjadi config/database.local.php (tidak ikut git)
 ├── panel/               → halaman panel admin & operator
 ├── portal_siswa/        → halaman portal siswa (aktivasi, beranda, izin, notifikasi, password); hanya lewat router
 ├── presensi/            → halaman publik siswa (scan, konfirmasi, daftar_hp, berhasil)
@@ -76,14 +77,22 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 3. Buka `http://localhost/phpmyadmin`, buat database kosong (mis. `siapabsen`).
 4. Pilih database itu → **Import** → pilih `database/database.sql` → **Go**.
    (Membuat seluruh tabel, akun admin default, dan pengaturan awal. Tanpa data siswa dummy.)
-5. Sesuaikan `config/database.php`:
+5. Salin `config/database.example.php` menjadi **`config/database.local.php`** lalu isi:
    ```php
-   define('DB_HOST', 'localhost');
-   define('DB_NAME', 'siapabsen');
-   define('DB_USER', 'root');
-   define('DB_PASS', '');
-   define('BASE_URL', 'http://localhost/siap');
+   return [
+       'db_host'  => 'localhost',
+       'db_name'  => 'siapabsen',
+       'db_user'  => 'root',
+       'db_pass'  => '',
+       'base_url' => 'http://localhost/siap',   // tanpa slash di akhir (slash otomatis dibuang)
+       'app_secret' => '',                       // boleh kosong: dibuat otomatis
+       'trusted_proxies' => [],
+   ];
    ```
+   `config/database.local.php` **tidak ikut git** (lihat `.gitignore`), jadi kredensial tidak pernah ter-commit dan
+   tidak tertimpa saat kode diperbarui. `config/database.php` (yang ada di git) tidak perlu diubah. Alternatif tanpa
+   file: variabel lingkungan `SIAP_DB_HOST`, `SIAP_DB_NAME`, `SIAP_DB_USER`, `SIAP_DB_PASS`, `SIAP_BASE_URL`,
+   `SIAP_APP_SECRET`, `SIAP_TRUSTED_PROXIES`.
 6. Buka `http://localhost/siap/login.php` dan login dengan akun default (bagian 7).
 
 **Kamera & lokasi:** browser mengizinkan kamera/GPS di `http://localhost`. Untuk uji
@@ -96,8 +105,11 @@ dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan
 1. **Buat Website** di aaPanel (domain sekolah, PHP **8.1/8.2**).
 2. **Buat Database**, catat nama, user, dan password.
 3. **Upload source** ke `/www/wwwroot/<domain-anda>/` lalu ekstrak.
-4. **Konfigurasi** `config/database.php` (kredensial DB) dan set `BASE_URL` ke domain HTTPS,
-   mis. `https://siap.man2kotamadiun.sch.id`. Import `database/database.sql` lewat phpMyAdmin.
+4. **Konfigurasi**: salin `config/database.example.php` menjadi `config/database.local.php`, isi kredensial DB
+   dan `base_url` = domain HTTPS, mis. `https://siap.man2kotamadiun.sch.id` (tanpa slash di akhir). Isi juga
+   `app_secret` dengan 64 karakter acak (`php -r "echo bin2hex(random_bytes(32));"`). Bila `base_url` kosong,
+   aplikasi menebak dari alamat yang sedang dibuka dan mencatat peringatan di error log; untuk produksi selalu
+   isi. Import `database/database.sql` lewat phpMyAdmin.
 5. **Permission** folder `uploads/`:
    ```
    chown -R www:www /www/wwwroot/<domain-anda>/uploads
@@ -325,3 +337,14 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
   Permintaan API / AJAX dijawab JSON (`{"success":false,"code":"DB_UNAVAILABLE",...}`), dan popup formulir
   hanya menampilkan pesan singkat. Logikanya ada di `tampilkan_error_database()` di `config/database.php`.
 - Ganti password `admin` bawaan dan password database sebelum dipakai produksi.
+
+---
+
+## 11. UPGRADE DARI VERSI SEBELUMNYA
+
+Lakukan berurutan, **sebelum** menimpa kode lama:
+
+1. **Pindahkan konfigurasi.** Catat nilai `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, dan `BASE_URL` dari
+   `config/database.php` yang lama, lalu buat `config/database.local.php` (salin dari `config/database.example.php`)
+   berisi nilai itu. Setelah itu `config/database.php` boleh ditimpa versi baru. Tanpa file lokal, aplikasi memakai
+   bawaan `root`/tanpa password dan halaman akan menampilkan 503. Ganti password database yang pernah ikut ter-commit.
