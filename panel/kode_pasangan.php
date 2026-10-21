@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Popup: membuat Kode Pasangan 6 angka agar siswa dapat mendaftarkan perangkatnya (dimuat lewat AJAX).
 require_once __DIR__ . '/../includes/auth.php';
 require_login();

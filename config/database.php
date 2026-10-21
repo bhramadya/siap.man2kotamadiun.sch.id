@@ -1,19 +1,172 @@
 <?php
 
 /**
- * Konfigurasi koneksi database (PDO)
- * Ganti nilai di bawah sesuai environment hosting/XAMPP/aaPanel Anda.
+ * Konfigurasi aplikasi + koneksi database (PDO).
+ *
+ * NILAI ASLI TIDAK DISIMPAN DI GIT. Salin config/database.example.php menjadi
+ * config/database.local.php (file itu diabaikan git) lalu isi kredensial database,
+ * BASE_URL, dan kunci rahasia server. Alternatif: variabel lingkungan SIAP_DB_HOST,
+ * SIAP_DB_NAME, SIAP_DB_USER, SIAP_DB_PASS, SIAP_BASE_URL, SIAP_APP_SECRET,
+ * SIAP_TRUSTED_PROXIES (dipisah koma).
  */
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'siapabsen');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+// File ini hanya untuk di-include, tidak untuk dibuka langsung dari browser.
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; }
+
+$__siapConfig = [];
+// Konfigurasi lokal ada? (file local ATAU variabel lingkungan SIAP_DB_*). Bila tidak, koneksi memakai
+// bawaan root/tanpa password dan gagal; pesan 503 + error_log lalu menyebut penyebabnya dengan jelas.
+define('SIAP_CONFIG_LOKAL_ADA', is_file(__DIR__ . '/database.local.php')
+    || getenv('SIAP_DB_NAME') !== false || getenv('SIAP_DB_USER') !== false || getenv('SIAP_DB_HOST') !== false);
+if (is_file(__DIR__ . '/database.local.php')) {
+    $__siapConfig = require __DIR__ . '/database.local.php';
+    if (!is_array($__siapConfig)) $__siapConfig = [];
+}
+
+/** Ambil nilai konfigurasi: database.local.php -> variabel lingkungan -> bawaan. */
+function siap_config_nilai(array $config, string $kunci, string $env, $bawaan)
+{
+    if (array_key_exists($kunci, $config) && $config[$kunci] !== null) return $config[$kunci];
+    $v = getenv($env);
+    return ($v !== false && $v !== '') ? $v : $bawaan;
+}
+
+define('DB_HOST', (string) siap_config_nilai($__siapConfig, 'db_host', 'SIAP_DB_HOST', 'localhost'));
+define('DB_NAME', (string) siap_config_nilai($__siapConfig, 'db_name', 'SIAP_DB_NAME', 'siapabsen'));
+define('DB_USER', (string) siap_config_nilai($__siapConfig, 'db_user', 'SIAP_DB_USER', 'root'));
+define('DB_PASS', (string) siap_config_nilai($__siapConfig, 'db_pass', 'SIAP_DB_PASS', ''));
 define('DB_CHARSET', 'utf8mb4');
 
-// Base URL aplikasi (dipakai untuk membuat isi QR Code siswa).
+// ---------------------------------------------------------------------------
+// BASE_URL — base URL aplikasi (dipakai untuk membuat isi QR Code siswa,
+// link, redirect, dan URL aset).
+//
+// BASE_URL TIDAK lagi ditulis manual, supaya satu kode yang sama bisa jalan
+// di localhost (http://siap.test), di tunnel ngrok (https://domain-ngrok),
+// maupun di hosting domain sendiri tanpa perlu mengubah file tiap kali.
+//
+// Urutan prioritas:
+//   1) konstanta SIAP_BASE_URL  -> dari file config/production.php (server VPS)
+//   2) environment variable SIAP_BASE_URL
+//   3) deteksi otomatis dari request (skema + host)
+//
 // Contoh production: https://domainsekolah.sch.id
-define('BASE_URL', 'http://localhost/siap.man2kotamadiun.sch.id');
+// ---------------------------------------------------------------------------
+
+// Override manual untuk subfolder (biasanya TIDAK perlu diisi).
+// Contoh: '/siap' bila aplikasi memang dipasang di dalam folder.
+// Kalau kosong, subfolder dideteksi otomatis dari DOCUMENT_ROOT (lihat
+// siap_base_path()).
+define('BASE_PATH', '');
+
+/** Host cadangan bila tidak ada request HTTP (mis. menjalankan skrip via CLI). */
+const BASE_HOST_DEFAULT = 'siap.test';
+
+// Override produksi (opsional). Salin config/production.php.example menjadi
+// config/production.php lalu isi domainnya. File itu tidak di-commit.
+if (is_file(__DIR__ . '/production.php')) {
+    require_once __DIR__ . '/production.php';
+}
+
+define('BASE_URL', base_url_aplikasi());
+
+/**
+ * Base URL lengkap aplikasi.
+ * Mengembalikan override eksplisit bila ada, jika tidak mendeteksi dari request.
+ */
+function base_url_aplikasi(): string
+{
+    // 1) Override eksplisit (konstanta dari config/production.php)
+    $override = defined('SIAP_BASE_URL') ? trim((string) SIAP_BASE_URL) : '';
+    // 2) Override eksplisit (environment variable, mis. di aaPanel/Panel)
+    if ($override === '') {
+        $override = trim((string) (getenv('SIAP_BASE_URL') ?: ''));
+    }
+    // Override = base URL PENUH (sudah termasuk subfolder bila ada).
+    if ($override !== '') {
+        return rtrim($override, '/');
+    }
+
+    // 3) Deteksi dari request
+    $skema = siap_https_aktif() ? 'https' : 'http';
+    return $skema . '://' . siap_host_request() . siap_base_path();
+}
+
+/**
+ * Subfolder tempat aplikasi berada relatif terhadap document root server.
+ * '' berarti aplikasi dilayani di root domain (mis. vhost siap.test),
+ * '/siap' bila dilayani lewat default vhost (folder D:/laragon/www/siap).
+ * Dideteksi otomatis supaya BASE_URL selalu benar, apa pun cara aplikasinya
+ * dipasang, tanpa perlu mengubah konfigurasi tiap kali.
+ */
+function siap_base_path(): string
+{
+    // Override manual menang.
+    if (defined('BASE_PATH') && BASE_PATH !== '') {
+        return '/' . trim((string) BASE_PATH, '/');
+    }
+
+    $docRoot = (string) ($_SERVER['DOCUMENT_ROOT'] ?? '');
+    $appDir  = realpath(__DIR__ . '/..');           // folder root aplikasi
+    if ($docRoot === '' || $appDir === false) {
+        return '';
+    }
+
+    $docRoot = rtrim(str_replace('\\', '/', (string) realpath($docRoot)), '/');
+    $appDir  = str_replace('\\', '/', (string) $appDir);
+    if ($docRoot !== '' && strpos($appDir, $docRoot . '/') === 0) {
+        return substr($appDir, strlen($docRoot));   // mis. '/siap'
+    }
+    return '';
+}
+
+/**
+ * Host publik yang sedang diakses.
+ *
+ * Sumber utama adalah header Host yang dikirim browser — nilainya sudah
+ * dijamin benar oleh server (ngrok menolak request dengan Host yang tidak
+ * cocok dengan endpoint-nya, dan vhost Apache memverifikasi ServerName).
+ *
+ * X-Forwarded-Host hanya dipakai sebagai cadangan bila Host kosong, dan HANYA
+ * dipercaya bila request datang dari loopback (127.0.0.1 / ::1 = proxy lokal
+ * di mesin ini). Tanpa aturan ini, siapa pun bisa mengarang host sehingga QR
+ * Code yang dicetak (isinya memuat BASE_URL) menunjuk ke domain palsu.
+ */
+function siap_host_request(): string
+{
+    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+
+    if ($host === '') {
+        $remote    = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        $proxyLokal = in_array($remote, ['127.0.0.1', '::1'], true);
+        if ($proxyLokal) {
+            $daftar = array_filter(array_map('trim', explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''))));
+            $host  = (string) end($daftar);
+        }
+    }
+
+    // Sanitasi: hanya izinkan karakter yang lazim pada nama host + port.
+    $host = preg_replace('/[^A-Za-z0-9\.\-:\[\]]/', '', $host) ?? '';
+    return $host !== '' ? $host : BASE_HOST_DEFAULT;
+}
+
+/**
+ * Apakah koneksi pengguna memakai HTTPS (langsung atau lewat reverse proxy).
+ * Fungsi ini dipakai untuk BASE_URL sekaligus untuk cookie sesi "secure".
+ *
+ * Untuk X-Forwarded-Proto dipakai NILAI TERAKHIR: proxy menambahkan nilainya
+ * di belakang nilai yang dikirim klien, jadi nilai terakhir yang paling dekat
+ * dengan server dan tidak bisa dipalsukan klien.
+ */
+function siap_https_aktif(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') return true;
+    if ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443') return true;
+
+    $daftar = array_filter(array_map('trim', explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))));
+    $proto  = strtolower((string) end($daftar));
+    return $proto === 'https';
+}
 
 // Zona waktu server — WAJIB konsisten agar validasi jam presensi akurat.
 date_default_timezone_set('Asia/Jakarta');
@@ -52,12 +205,25 @@ function tampilkan_error_database(Throwable $e): void
 {
     $kode = 'DB-' . strtoupper(bin2hex(random_bytes(3)));
     error_log('DB Connection Error [' . $kode . ']: ' . $e->getMessage());
+    if (!SIAP_CONFIG_LOKAL_ADA) {
+        // Penyebab paling umum setelah upgrade: konfigurasi lokal belum dibuat.
+        error_log('SIAP [' . $kode . ']: config/database.local.php belum dibuat (dan SIAP_DB_* tidak ada); lihat README bagian 11.');
+        $kode .= ' — config/database.local.php belum dibuat; lihat README bagian 11';
+    }
 
     if (PHP_SAPI === 'cli') {
         fwrite(STDERR, "Koneksi database gagal [$kode]\n");
         exit(1);
     }
+    tampilkan_halaman_503($kode);
+}
 
+/**
+ * Halaman 503 (503.html / JSON untuk API / potongan untuk popup) dengan "kode kejadian" $kode, lalu berhenti.
+ * Dipakai untuk koneksi database gagal dan konfigurasi wajib yang belum diisi (base_url).
+ */
+function tampilkan_halaman_503(string $kode, string $kodeJson = 'DB_UNAVAILABLE'): void
+{
     // Buang keluaran halaman yang sempat tertulis supaya tidak bercampur dengan halaman error.
     while (ob_get_level() > 0) ob_end_clean();
 
@@ -89,7 +255,7 @@ function tampilkan_error_database(Throwable $e): void
         echo json_encode([
             'ok'      => false,
             'success' => false,
-            'code'    => 'DB_UNAVAILABLE',
+            'code'    => $kodeJson,
             'message' => 'Layanan sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi.',
             'ref'     => $kode,
         ], JSON_UNESCAPED_UNICODE);

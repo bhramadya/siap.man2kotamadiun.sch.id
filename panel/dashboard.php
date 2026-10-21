@@ -1,7 +1,18 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 require_once __DIR__ . '/../includes/header.php';
 
 $db = getDB();
+
+// Peringatan pengaturan anti-titip-absen yang lemah (GPS mati, QR kelas permanen) untuk pengelola pengaturan.
+if (can('pengaturan.kelola')) {
+    foreach (peringatan_keamanan_presensi() as $peringatan): ?>
+<a class="alert alert-danger d-flex align-items-center gap-2 text-decoration-none mb-3" href="<?= e(modul_url('pengaturan')) ?>">
+  <i class="bi bi-shield-exclamation fs-5"></i>
+  <span><?= $peringatan /* HTML statis dari kode */ ?></span>
+</a>
+<?php endforeach;
+}
 
 // Pengingat untuk petugas piket: ada pengajuan izin/sakit yang menunggu keputusan.
 if (can_modul('izin')) {
@@ -319,7 +330,8 @@ $stRajin->execute([':awal' => $awalBulan]);
 $siswaRajin = $stRajin->fetchAll();
 
 // Rekor 4: 3 kelas dengan persentase kehadiran terbaik bulan ini
-$stHariAktif = $db->prepare('SELECT COUNT(DISTINCT tanggal) FROM presensi WHERE tanggal >= :awal');
+// tanggal <= CURDATE(): izin yang disetujui sampai 30 hari ke depan tidak boleh ikut dihitung sebagai hari aktif.
+$stHariAktif = $db->prepare('SELECT COUNT(DISTINCT tanggal) FROM presensi WHERE tanggal >= :awal AND tanggal <= CURDATE()');
 $stHariAktif->execute([':awal' => $awalBulan]);
 $hariAktifBulan = (int) $stHariAktif->fetchColumn();
 $kelasTerbaik = [];

@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Papan Kehadiran Langsung: ringkasan & daftar siswa yang baru hadir, diperbarui otomatis.
 // ?data=1 -> keluaran JSON untuk pembaruan berkala (polling).
 

@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Endpoint kecil (tanpa tampilan): mencatat aksi CETAK dari browser saat dialog cetak dibuka.
 require_once __DIR__ . '/../includes/auth.php';
 require_login();

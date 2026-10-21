@@ -30,11 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $cekPetugas->execute([':u' => $username]);
 
       if ($cekPetugas->fetchColumn()) {
-        $sisaKunci = login_kunci_sisa($username);
+        // Atomik: batas diperiksa DAN percobaan dicatat sebelum password diperiksa (aman dari permintaan paralel).
+        $percobaan = login_mulai_percobaan($username);
+        $sisaKunci = $percobaan['sisa'];
         if ($sisaKunci > 0) {
           // Terlalu banyak percobaan gagal: jangan periksa password sama sekali.
           security_log(null, 'ADMIN_LOGIN_LOCKED', null, 'Login diblokir sementara untuk username: ' . substr($username, 0, 50));
-          $error = 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . (int) ceil($sisaKunci / 60) . ' menit.';
+          $error = 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . teks_waktu_tunggu($sisaKunci) . '.';
           usleep(300000);
         } else {
           $stmt = getDB()->prepare('SELECT * FROM users WHERE username = :u AND status = "aktif" LIMIT 1');
@@ -44,16 +46,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           if ($user && password_verify($password, $user['password'])) {
             session_regenerate_id(true);
             $_SESSION['admin_id'] = $user['id'];
+            unset($_SESSION['wajib_ganti_password']);
             $_SESSION['last_regen'] = time();
             login_bersihkan($username);
             catat_aktivitas('LOGIN', 'login', 'Login berhasil: ' . $user['username']);
-            if ($password === 'admin123') {
-              set_flash('warning', 'Password Anda masih password bawaan (admin123). Segera ganti di menu Profil Akun.');
+            // Password bawaan -> WAJIB diganti dulu (require_login() mengalihkan semua halaman ke Profil).
+            if (in_array($password, PASSWORD_BAWAAN, true)) {
+              tandai_wajib_ganti_password((int) $user['id'], true);
+            }
+            if (admin_wajib_ganti_password()) {
+              set_flash('warning', 'Anda masih memakai password bawaan. Ganti password terlebih dahulu sebelum memakai panel.');
+              header('Location: ' . modul_url('profil'));
+              exit;
             }
             header('Location: index.php?modul=dashboard');
             exit;
           } else {
-            login_catat_gagal($username);
+            login_catat_gagal($username, $percobaan['id']);
             security_log(null, 'ADMIN_LOGIN_FAILED', null, 'Login admin gagal untuk username: ' . substr($username, 0, 50));
             $error = 'Username atau password salah.';
             usleep(300000); // mitigasi brute force sederhana
@@ -76,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           exit;
         }
         $error = !empty($hasilSiswa['terkunci'])
-          ? 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . (int) ceil($hasilSiswa['sisa'] / 60) . ' menit.'
+          ? 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . teks_waktu_tunggu((int) $hasilSiswa['sisa']) . '.'
           : 'Username atau password salah.';
         usleep(300000);
       }

@@ -13,14 +13,50 @@ Options -Indexes
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # ------------------------------------------------------------------
+  # TUNNEL HTTPS (ngrok)
+  #
+  # Saat aplikasi dijalankan lewat ngrok, request datang dari "private leg"
+  # ngrok (127.0.0.1 / ::1). Dua hal yang dipakai di sini:
+  #   * Host       -> sudah benar (ngrok menolak request dengan Host yang
+  #                   tidak cocok dengan endpoint-nya), dipakai untuk redirect.
+  #   * X-Forwarded-Proto -> ngrok menambahkannya di belakang nilai yang
+  #                   dikirim klien, jadi nilai terakhir tidak bisa dipalsukan.
+  #                   Header ini TIDAK terbaca lewat %{HTTP_...} pada
+  #                   mod_rewrite di konteks .htaccess, jadi diteruskan lewat
+  #                   SetEnvIf (membaca header mentah).
+  #
+  # Tanpa ini, Apache menulis "http://<host-lokal>/login" dan HP tidak bisa
+  # membukanya (dan browser memblokir mixed content).
+  # ------------------------------------------------------------------
+  <IfModule mod_setenvif.c>
+    SetEnvIf X-Forwarded-Proto "^(?:https|.*[,][[:space:]]*https)$" PUBLIK_HTTPS=1
+  </IfModule>
+
   # 1) Kalau ada yang mengakses URL yang MASIH mengandung .php secara
   #    langsung (misal dari bookmark lama), arahkan (redirect 301) ke
   #    versi bersihnya. Hanya berlaku utk GET, supaya submit form (POST)
   #    tidak pernah kena redirect & kehilangan data yang dikirim.
+  #
+  #    1a) Lewat tunnel ngrok -> pakai host & skema PUBLIK.
+  #        Host + path digabung dalam satu TestString supaya muat dalam satu
+  #        grup tangkapan (mod_rewrite di konteks .htaccess hanya menyisakan
+  #        grup tangkapan terakhir).
+  #        Syarat "THE_REQUEST masih berisi .php" dipakai supaya aturan ini
+  #        hanya jalan pada request pertama; tanpa itu, rewrite internal
+  #        (aturan 2) memicu redirect berulang.
   RewriteCond %{REQUEST_METHOD} =GET
-  # index.php (router) dikecualikan: URL-nya memang index.php?modul=...
   RewriteCond %{THE_REQUEST} !\s/+index\.php[\s?] [NC]
-  RewriteCond %{THE_REQUEST} \s/+(.+)\.php[\s?] [NC]
+  RewriteCond %{THE_REQUEST} \.php
+  RewriteCond %{REMOTE_ADDR} ^(?:127\.0\.0\.1|::1|\[::1\])$
+  RewriteCond %{ENV:PUBLIK_HTTPS} =1
+  RewriteCond "%{HTTP_HOST}%{REQUEST_URI}" ^(.+)\.php
+  RewriteRule ^ https://%1 [R=301,L,QSA]
+
+  #    1b) Tanpa tunnel (localhost biasa) -> pakai host & skema request.
+  RewriteCond %{REQUEST_METHOD} =GET
+  RewriteCond %{THE_REQUEST} !\s/+index\.php[\s?] [NC]
+  RewriteCond %{THE_REQUEST} \s/+(.+)\.php[\s?]
   RewriteRule ^ /%1 [R=301,L]
 
   # 2) Internal rewrite: request TANPA .php otomatis dilayani oleh file

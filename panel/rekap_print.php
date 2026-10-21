@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 // Halaman cetak Rekap Kehadiran Bulanan (semua siswa, tanpa paginasi).
 require_once __DIR__ . '/../includes/auth.php';
 require_login();

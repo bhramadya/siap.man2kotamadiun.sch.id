@@ -1,16 +1,19 @@
 <?php
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) { http_response_code(404); exit; } // hanya untuk di-include
 /**
  * Pengaturan keamanan dasar: header HTTP + cookie sesi.
  * Dimuat otomatis oleh auth.php dan functions.php (sekali saja, require_once),
  * sehingga berlaku untuk semua halaman, termasuk /presensi dan /api.
  */
 
+// Config database (BASE_URL, helpers skema/host) harus dimuat lebih dulu:
+// dipakai bersama oleh https_aktif() dan pembuatan BASE_URL.
+require_once __DIR__ . '/../config/database.php';
+
 /** Apakah koneksi pengguna memakai HTTPS (termasuk di belakang reverse proxy)? */
 function https_aktif(): bool
 {
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
-    if ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443') return true;
-    return strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    return siap_https_aktif();
 }
 
 /**

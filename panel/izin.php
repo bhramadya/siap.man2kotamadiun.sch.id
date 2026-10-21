@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { header('Location: ../index.php?modul=' . basename(__FILE__, '.php')); exit; } // hanya lewat router (index.php)
 /**
  * Pengajuan Izin — antrean persetujuan izin/sakit siswa untuk petugas piket.
  * Disetujui -> hari efektif ditulis ke presensi (IZIN/SAKIT) dan siswa mendapat notifikasi.

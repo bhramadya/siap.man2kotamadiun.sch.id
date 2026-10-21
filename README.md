@@ -54,6 +54,8 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 ├── index.php            → router URL bersih (/siswa, /absensi, ...) + beranda publik
 ├── beranda.php, login.php, logout.php
 ├── config/database.php
+├── config/production.php.example → contoh override BASE_URL untuk server produksi
+├── tools/ngrok-siap.ps1         → buka/tutup tunnel ngrok untuk uji dari HP (bagian 4b)
 ├── panel/               → halaman panel admin & operator
 ├── portal_siswa/        → halaman portal siswa (aktivasi, beranda, izin, notifikasi, password); hanya lewat router
 ├── presensi/            → halaman publik siswa (scan, konfirmasi, daftar_hp, berhasil)
@@ -76,18 +78,96 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 3. Buka `http://localhost/phpmyadmin`, buat database kosong (mis. `siapabsen`).
 4. Pilih database itu → **Import** → pilih `database/database.sql` → **Go**.
    (Membuat seluruh tabel, akun admin default, dan pengaturan awal. Tanpa data siswa dummy.)
-5. Sesuaikan `config/database.php`:
+5. Salin `config/database.example.php` menjadi **`config/database.local.php`** lalu isi:
    ```php
    define('DB_HOST', 'localhost');
    define('DB_NAME', 'siapabsen');
    define('DB_USER', 'root');
    define('DB_PASS', '');
-   define('BASE_URL', 'http://localhost/siap');
    ```
+   `BASE_URL` **tidak perlu ditulis manual** — aplikasi menentukannya sendiri dari
+   request (lihat bagian 4b). Kalau aplikasi dipasang di dalam subfolder, isi
+   `define('BASE_PATH', '/siap');` (default-nya sudah otomatis dideteksi).
 6. Buka `http://localhost/siap/login.php` dan login dengan akun default (bagian 7).
 
 **Kamera & lokasi:** browser mengizinkan kamera/GPS di `http://localhost`. Untuk uji
-dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan HTTPS.
+dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan HTTPS
+→ lihat **bagian 4b**.
+
+---
+
+## 4b. UJI DARI HP / APLIKASI ANDROID (TUNNEL NGROK)
+
+Kamera (scan QR) dan GPS **hanya berjalan di halaman HTTPS**. Untuk menguji dari HP —
+atau dari aplikasi Android pembungkus WebView (`SIAPApp`) — tanpa mengupload ke
+hosting, jalankan aplikasi lokal lewat tunnel **ngrok** (URL publik HTTPS).
+
+### Prasyarat
+
+- Apache Laragon jalan (port 80) dan MySQL jalan.
+- ngrok v3 terpasang + authtoken sudah diisi:
+  ```
+  ngrok config add-authtoken <TOKEN>
+  ```
+
+### Menjalankan
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\ngrok-siap.ps1
+```
+
+Script akan memastikan Apache listen di port 80, menjalankan
+`ngrok http 80`, menunggu tunnel siap, lalu menampilkan URL publik beserta
+tautan siap pakai (beranda, presensi, login, QR gerbang). Subfolder aplikasi
+pada URL publik (mis. `/siap`) ikut dideteksi otomatis.
+
+Perintah lain:
+
+```powershell
+... -Action status    # URL tunnel yang sedang aktif
+... -Action stop      # tutup tunnel
+... -Action restart   # tutup lalu buka lagi
+```
+
+Buka URL publik di HP. **Halaman pertama di tiap perangkat** akan menampilkan
+peringatan ngrok “Visit Site” — tekan tombolnya **sekali** (cookie berlaku 7 hari).
+Aplikasi Android/WebView dapat melewati peringatan ini dengan memakai
+*custom User-Agent* (mis. `SIAPApp/1.0`).
+
+> **URL tanpa `/siap`?** Tunnel memakai default vhost Laragon, jadi aplikasinya
+> berada di `/siap`. Agar berada di root domain, buat vhost Apache untuk domain
+> ngrok di `D:\laragon\etc\apache2\sites-enabled\` dengan
+> `DocumentRoot "D:/laragon/www/siap"` + `ServerName <domain-ngrok>`, lalu
+> restart Apache. Base URL dan QR Code tetap benar otomatis.
+
+### Yang terjadi di belakang layar
+
+- **`config/database.php`** menentukan `BASE_URL` otomatis dari request: skema
+  (`https`) + host yang diminta browser + subfolder aplikasi (dibandingkan dengan
+  `DOCUMENT_ROOT`). Jadi QR Code, tautan, dan redirect selalu memakai URL yang
+  benar — baik di `http://siap.test` maupun lewat tunnel ngrok.
+  Host diambil dari header `Host` (nilainya sudah dijamin benar: ngrok menolak
+  request dengan `Host` yang tidak cocok dengan endpoint-nya), **bukan** dari
+  `X-Forwarded-Host` yang bisa dipalsukan klien.
+- **`.htaccess`** memakai `SetEnvIf` untuk membaca header `X-Forwarded-Proto`
+  dari ngrok, sehingga redirect `.php` → URL bersih tetap mengarah ke **URL
+  publik HTTPS** (bukan `http://...` yang diblokir browser sebagai mixed content).
+- **`includes/keamanan.php`** otomatis memakai cookie sesi `Secure` + HSTS saat
+  request datang lewat tunnel HTTPS.
+
+### Catatan penting
+
+- Tunnel ini membuat aplikasi **terbuka untuk siapa pun yang tahu URL-nya**.
+  Ganti password admin bawaan (`admin` / `admin123`) lewat menu **Profil** sebelum
+  siswa/karyawan memakainya.
+- Free plan ngrok: **1 GB transfer + 20.000 request per bulan**, maksimal 3 endpoint
+  aktif, dan **1 domain dev** (alamat domainnya tetap sama antar restart).
+- QR Code yang sudah dicetak memuat URL publik. Jika domain ngrok berubah
+  (mis. berganti akun), QR perlu dicetak ulang.
+- Untuk produksi tetap pakai domain sekolah + hosting (bagian 5), dan set
+  `BASE_URL` secara eksplisit di server lewat `config/production.php`
+  (contoh: `config/production.php.example`) atau environment variable
+  `SIAP_BASE_URL`.
 
 ---
 
@@ -96,8 +176,12 @@ dari HP lain gunakan tunnel HTTPS (mis. `ngrok`), karena kamera & GPS mewajibkan
 1. **Buat Website** di aaPanel (domain sekolah, PHP **8.1/8.2**).
 2. **Buat Database**, catat nama, user, dan password.
 3. **Upload source** ke `/www/wwwroot/<domain-anda>/` lalu ekstrak.
-4. **Konfigurasi** `config/database.php` (kredensial DB) dan set `BASE_URL` ke domain HTTPS,
-   mis. `https://siap.man2kotamadiun.sch.id`. Import `database/database.sql` lewat phpMyAdmin.
+4. **Konfigurasi** `config/database.php` (kredensial DB). Import `database/database.sql`
+   lewat phpMyAdmin. `BASE_URL` dideteksi otomatis dari request, jadi di server
+   produksi tetap sebaiknya di-*override* supaya URL tidak pernah bergantung pada
+   header: salin `config/production.php.example` → `config/production.php` lalu isi
+   domain HTTPS-nya (mis. `https://siap.man2kotamadiun.sch.id`), atau set environment
+   variable `SIAP_BASE_URL`.
 5. **Permission** folder `uploads/`:
    ```
    chown -R www:www /www/wwwroot/<domain-anda>/uploads
@@ -149,19 +233,80 @@ Semua dilayani `index.php` (front controller) lewat aturan di `.htaccess`.
 - Peta rute ada di satu tempat: konstanta `RUTE_MODUL` di `includes/functions.php`. Untuk membuat tautan **selalu**
   pakai `modul_url('nama_modul', ['param' => 'nilai'])`; jangan menempelkan `&param=...` secara manual.
 - Jangan membuat rute berawalan nama folder nyata (`api`, `assets`, `config`, `includes`, `panel`, `presensi`, `uploads`, `database`).
-- Server **Apache/LiteSpeed** (aaPanel default) cukup memakai `.htaccess` bawaan. Untuk **Nginx**, tambahkan:
-  ```nginx
-  location / { try_files $uri $uri/ $uri.php /index.php?$query_string; }
-  ```
+- Server **Apache/LiteSpeed** (aaPanel default) cukup memakai `.htaccess` bawaan. **Nginx mengabaikan `.htaccess`**,
+  jadi semua perlindungan folder harus ditulis di konfigurasi situs (lihat blok di bawah).
+
+**Nginx — bagian A: aaPanel** (Website → situs → *URL rewrite*). Kotak ini disisipkan aaPanel **di dalam** blok
+`server` miliknya, jadi tempel **hanya** isi berikut (tanpa `server { }` dan tanpa `location ~ \.php$`, karena PHP
+sudah diatur aaPanel lewat `enable-php-XX.conf`). Folder memakai `^~` supaya menang atas lokasi PHP aaPanel yang
+muncul lebih dulu:
+
+```nginx
+# 1) Folder internal: tidak boleh dibuka dari browser (dipakai PHP lewat filesystem saja)
+location ^~ /config/       { deny all; return 404; }
+location ^~ /includes/     { deny all; return 404; }
+location ^~ /database/     { deny all; return 404; }
+location ^~ /portal_siswa/ { deny all; return 404; }
+
+# 2) Berkas sensitif di mana pun: dump SQL, dokumentasi, .htaccess/.user.ini/.git, backup
+location ~* \.(sql|md|ini|log|bak|sh)$ { deny all; return 404; }
+location ~ /\.(?!well-known/) { deny all; return 404; }
+
+# 3) Unggahan: surat izin/dokter (data kesehatan) ditolak total; folder lain hanya berkas statis,
+#    PHP TIDAK PERNAH dieksekusi di bawah /uploads/
+location ^~ /uploads/izin/ { deny all; return 404; }
+location ^~ /uploads/ {
+    location ~ \.(php|phtml|phar|php\d)$ { deny all; return 404; }
+}
+
+# 4) URL bersih: /login -> login.php, /siswa/123 -> index.php (router)
+location / { try_files $uri $uri/ @siap; }
+location @siap {
+    if (-f $document_root$uri.php) { rewrite ^ $uri.php last; }
+    rewrite ^ /index.php last;
+}
+```
+
+Simpan, lalu pastikan `nginx -t` lolos (aaPanel menolak menyimpan bila ada galat).
+
+**Nginx — bagian B: vhost tulis sendiri** (tanpa aaPanel). Seluruh blok `server`; isi bagian 1–4 sama persis dengan
+bagian A, ditambah lokasi PHP. Sesuaikan `root` dan `fastcgi_pass`:
+
+```nginx
+server {
+    # listen, server_name, ssl_certificate ...
+    root  /www/wwwroot/siap.man2kotamadiun.sch.id;
+    index index.php;
+
+    # --- tempel bagian 1–4 dari blok A di sini ---
+
+    # 5) PHP
+    location ~ \.php$ {
+        try_files $uri =404;
+        fastcgi_pass unix:/tmp/php-cgi-82.sock;   # sesuaikan versi/socket PHP
+        fastcgi_index index.php;
+        include fastcgi.conf;
+    }
+}
+```
+
+Jangan memakai `try_files ... $uri.php ...` langsung di `location /`: Nginx akan mengirim isi file PHP sebagai teks.
+Setelah import, **hapus `database/database.sql` dari server produksi** (cukup simpan di komputer admin). Selain aturan
+server, setiap file di `includes/`, `config/`, `panel/`, dan `portal_siswa/` juga menolak dibuka langsung dari PHP-nya
+sendiri (pemeriksaan `APP_ROUTER` / `SCRIPT_FILENAME`), jadi kesalahan konfigurasi server tidak langsung membuka
+halaman internal.
 
 ---
 
 ## 7. AKUN & DATA DEFAULT
 
-- **Admin:** `admin` / `admin123` — ⚠️ **ganti segera** setelah login pertama (menu Profil).
+- **Admin awal:** username `admin`, password bawaan dari `database.sql`. Saat login pertama aplikasi **memaksa
+  penggantian password**: semua halaman panel dialihkan ke Profil sampai password baru disimpan (kolom
+  `users.must_change_password`). Akun mana pun yang login dengan password bawaan (mis. `admin123`) ikut ditandai.
 - Tidak ada data siswa bawaan; tambahkan lewat Data Siswa atau Import.
-- **Pengaturan awal:** jam masuk `07:00`, batas terlambat `07:15`, GPS nonaktif,
-  validasi IP nonaktif, Device Binding **aktif**, QR gerbang 120 detik,
+- **Pengaturan awal:** jam masuk `07:00`, batas terlambat `07:15`, **GPS aktif** (koordinat contoh — **wajib
+  diganti** dengan koordinat sekolah di Pengaturan, karena presensi di luar radius ditolak), QR Kelas **bertanda
+  waktu** (bukan permanen), validasi IP nonaktif, Device Binding **aktif**, QR gerbang 120 detik,
   maksimal reset perangkat 2x/bulan per siswa, hari efektif Senin–Jumat.
 - Retensi Log Keamanan bisa diatur di Pengaturan (0 = tidak pernah dihapus otomatis).
 
@@ -170,15 +315,31 @@ Semua dilayani `index.php` (front controller) lewat aturan di `.htaccess`.
 ## 8. DEVICE BINDING (Poin Penting)
 
 **Identitas perangkat**
-- Browser/WebView membuat **UUID acak** sekali, disimpan di `localStorage` **dan cookie**
-  (400 hari) sebagai cadangan; salah satu yang hilang dipulihkan dari yang lain
-  (`assets/js/device.js`).
-- Server menyimpan **hash SHA-256** dari UUID (`device_hash` = `sha256('v2|' + uuid)`),
-  dibandingkan saat presensi.
-- **User-Agent TIDAK ikut di-hash.** UA berubah setiap Chrome/Android System WebView
-  ter-update (mis. `154.0.8037.106` → `.107`); jika ikut di-hash, perangkat sah
-  akan dianggap "belum terdaftar". Skema lama (v1 = UUID + UA) dimigrasikan otomatis.
-
+- **Bukti utama = rahasia dari server.** Saat perangkat didaftarkan (otomatis, Kode Pasangan, atau QR Pasangan),
+  server membuat rahasia acak 256-bit dan menyimpannya di cookie **`SIAP_PERANGKAT`** (`HttpOnly`, `SameSite=Lax`,
+  `Secure` di HTTPS, 400 hari dan diperpanjang setiap presensi). Database hanya menyimpan hash-nya
+  (`device_bindings.secret_hash`). Skrip di halaman tidak bisa membaca cookie ini, dan menyalin UUID saja tidak lagi
+  cukup untuk presensi atas nama siswa lain.
+- Browser/WebView tetap membuat **UUID acak** di `localStorage` + cookie (`assets/js/device.js`); server menyimpan
+  `device_hash` = `sha256('v2|' + uuid)` untuk referensi, mencegah satu UUID dipakai dua siswa, dan untuk migrasi.
+- **Migrasi perangkat lama (dua tahap), siswa tidak perlu daftar ulang:**
+  1. Perangkat yang terdaftar sebelum upgrade (belum punya `secret_hash`) masih dikenali dari UUID.
+  2. Rahasia server dikirim ke HP itu **setelah presensi berhasil penuh** (lolos cek presensi ganda, jam, hari libur,
+     GPS), atau saat HP membuka beranda / cek perangkat (`api/beranda`, `api/cek_perangkat`) dan tidak membawa cookie
+     milik perangkat lain. Presensi yang **ditolak tidak pernah** mengganti kunci. Status binding: *menunggu*
+     (UUID **dan** cookie masih diterima, jadi HP asli tidak terkunci bila orang lain sempat mengambil cookie lewat
+     beranda, atau bila WebView kehilangan cookie).
+  3. Status menjadi *aktif* (UUID saja tidak diterima lagi) hanya bila cookie dipakai dalam **presensi yang berhasil**
+     **dan** cookie itu diterbitkan oleh presensi berhasil pada **hari sebelumnya** (`secret_terbit_at`,
+     `secret_terbit_oleh`). Cookie dari beranda/cek perangkat (*pasif*) tidak pernah langsung diaktifkan: presensi
+     berhasil dengan cookie itu hanya menggantinya dengan cookie baru bertanda *checkin*. Jadi orang yang menyalin UUID
+     tidak bisa mengambil alih perangkat dalam satu sesi; ia perlu presensi berhasil pada dua hari berbeda tanpa HP asli
+     presensi di antaranya. Biasanya HP asli menjadi *aktif* pada presensi hari berikutnya.
+  - **Batas masa transisi (opsional):** Pengaturan → *Batas pengenalan perangkat lama* (`settings.device_legacy_until`).
+    Kosong (bawaan) = tanpa batas. Bila diisi dan tanggalnya lewat, perangkat yang belum *aktif* tidak dikenali lagi
+    dari UUID dan harus direset admin. Tanggalnya ditentukan sekolah; jumlah perangkat yang belum termigrasi tampil
+    di **Manajemen Perangkat**.
+- **User-Agent TIDAK ikut di-hash** (UA berubah setiap Chrome/WebView ter-update).
 **Aturan**
 - 1 siswa = 1 perangkat (`UNIQUE(siswa_id)`), dan 1 perangkat = 1 siswa (`UNIQUE(device_hash)`).
 - Perangkat baru didaftarkan lewat salah satu cara (dibuat admin, sekali pakai):
@@ -194,14 +355,26 @@ Semua dilayani `index.php` (front controller) lewat aturan di `.htaccess`.
   tercatat di `security_logs`.
 
 **Migrasi dari versi lama**
-Jalankan `database/migration_device_hash_v2.sql` sekali (abaikan "Duplicate key name").
-Siswa yang sudah terdaftar **tidak perlu daftar ulang**. Baris tanpa `device_uuid`
-(seharusnya tidak ada) perlu direset lalu didaftarkan ulang.
+Hash skema lama (v1 = UUID + User-Agent) dimigrasikan otomatis ke v2 lewat kolom `device_uuid`; tidak ada file SQL
+terpisah. Siswa yang sudah terdaftar **tidak perlu daftar ulang**. Baris tanpa `device_uuid` (seharusnya tidak ada)
+perlu direset lalu didaftarkan ulang.
 
 **Keterbatasan (jujur)**
-Ini bukan hardware ID permanen. Perangkat dianggap baru bila siswa menghapus data aplikasi/browser
-(localStorage **dan** cookie), memakai incognito, ganti browser, atau ganti HP. Untuk keamanan
-lebih kuat, gabungkan dengan QR dinamis gerbang, GPS/geofencing, dan validasi IP.
+Ini bukan hardware ID permanen. Bila siswa menghapus cookie/data browser, memakai incognito, ganti browser, atau ganti
+HP, rahasianya hilang dan perangkat **tidak cocok lagi** (admin perlu mereset perangkat siswa itu). Pemilik HP yang
+sengaja mengekspor cookie-nya sendiri ke HP teman masih bisa menitip absen; karena itu tetap aktifkan GPS dan QR kelas
+bertanda waktu. Selama masa transisi, orang yang menyalin UUID perangkat yang belum *aktif* masih bisa presensi atas
+nama siswa itu (seperti sebelum pembaruan) dan, bila presensinya berhasil penuh, mengambil alih binding; isi batas masa
+transisi setelah sebagian besar perangkat termigrasi.
+
+**QR Kelas: permanen atau bertanda waktu** (Pengaturan → *QR Kelas permanen*)
+- **Mati (bawaan instalasi baru, disarankan):** isi QR kelas adalah token `k1.<id>.<kedaluwarsa>.<hmac>` yang
+  ditandatangani server (HMAC-SHA256, kunci `app_secret` atau `settings.kunci_rahasia`) dan berlaku sebesar durasi QR
+  gerbang + 3 menit. Halaman QR kelas memuat ulang sendiri, jadi tampilkan di layar/proyektor kelas. Foto QR yang
+  dibagikan cepat kedaluwarsa; tombol cetak disembunyikan dan poster lama tidak berlaku.
+- **Hidup (perilaku lama):** QR kelas tetap dan boleh dicetak. Instalasi lama otomatis berada di mode ini setelah
+  upgrade agar poster yang sudah ditempel tidak mendadak mati; Dashboard dan Pengaturan menampilkan peringatan merah
+  sampai mode ini dimatikan. Peringatan yang sama muncul bila validasi GPS nonaktif.
 
 ---
 
@@ -228,7 +401,9 @@ Siswa **tidak mendaftar sendiri** dan
 - Pembatas percobaan sendiri (`portal_attempts`) agar kegagalan siswa di Wi-Fi sekolah tidak mengunci login admin.
 
 **Keamanan yang diterapkan**
-- Gagal login dibatasi per NISN (5x / 15 menit) dan per IP (100x); salah kode aktivasi 5x mengunci 15 menit.
+- Gagal login dibatasi per NISN dari IP yang sama (5x / 15 menit, kunci) dan per IP (100x, kunci; IP yang pernah
+  login berhasil ke NISN itu dikecualikan). Di atas 30 gagal per NISN dari IP mana pun, IP tak dikenal mendapat jeda
+  bertahap (1–60 detik), bukan kunci. Salah kode aktivasi 5x mengunci 15 menit.
 - Pesan galat sengaja umum, dan pesan serta waktu respons jalur petugas, siswa, dan username tak dikenal disamakan
   (terukur ±380 ms semua), supaya username petugas maupun NISN yang punya akun tidak bisa ditebak.
 - Login siswa **bukan pengganti Device Binding**: presensi tetap lewat perangkat terdaftar.
@@ -242,12 +417,12 @@ blokir, buka/tutup portal). Izin ini **tidak** diberikan otomatis ke Operator; b
 
 Alamat lama `/portal/masuk` otomatis dialihkan ke `/login`. File `portal_siswa/masuk.php` dari versi sebelumnya sudah tidak dipakai dan boleh dihapus.
 
-**Instalasi:** tabel dibuat otomatis saat pertama dipakai. Bila akun database tidak punya hak `CREATE`,
+**Instalasi:** sudah termasuk di `database/database.sql`; pada instalasi lama tabel dibuat otomatis saat pertama dipakai. Bila akun database tidak punya hak `CREATE`,
 jalankan `database/migration_akun_siswa.sql` sekali.
 
 **Batas yang perlu diketahui:** sesi PHP berakhir sesuai `session.gc_maxlifetime` server (biasanya ±24 menit tanpa
-aktivitas), jadi siswa bisa diminta masuk ulang; dan penguncian per NISN berarti orang lain bisa membuat satu siswa
-terkunci sementara dengan menebak password berulang (pemulihannya otomatis setelah 15 menit).
+aktivitas), jadi siswa bisa diminta masuk ulang. Penguncian keras hanya per NISN + IP dan per IP, jadi orang lain
+tidak bisa mengunci seorang siswa dari jaringan lain; serangan dari banyak IP hanya memperlambat (jeda), tidak mengunci.
 
 ---
 
@@ -277,7 +452,7 @@ belum ada WhatsApp/email. Maksimal 100 notifikasi terbaru per siswa disimpan.
 hapus lampiran lama). **Tidak diberikan otomatis ke Operator**, jadi centang untuk petugas piket di menu Hak Akses.
 
 **Lampiran = data kesehatan.** Disimpan di `uploads/izin/` dengan nama acak, **tidak bisa dibuka langsung dari web**
-(`.htaccess` menolak; pada **Nginx** tambahkan `location ^~ /uploads/izin/ { deny all; }`), hanya lewat skrip yang
+(`.htaccess` menolak; pada **Nginx** pakai blok lengkap di bagian 6), hanya lewat skrip yang
 memeriksa hak akses: pemilik pengajuan dan petugas ber-izin `izin.lihat`. PDF dikirim sebagai unduhan, gambar
 dengan `nosniff` + CSP. Setiap pembukaan lampiran oleh petugas dicatat di **Log Keamanan**
 (`IZIN_LAMPIRAN_DILIHAT`). Tombol **Hapus lampiran lama** (halaman Pengajuan Izin) menghapus berkas dari
@@ -307,11 +482,40 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
 - Validasi & sanitasi input; `htmlspecialchars()` pada output.
 - Upload foto: cek MIME asli (`finfo`), batas 2MB, nama file di-generate ulang.
 - `uploads/` tidak dapat mengeksekusi PHP; `config/`, `includes/`, `database/` dilindungi `.htaccess`;
-  file `.sql` dan `.md` tidak dapat diakses dari browser.
+  file `.sql` dan `.md` tidak dapat diakses dari browser. Untuk Nginx gunakan blok lengkap di bagian 6.
+- File internal menolak akses langsung walau aturan server terlewat: `includes/*` dan `config/*` hanya bisa
+  di-include, halaman `panel/*` dan `portal_siswa/*` hanya jalan lewat router (`APP_ROUTER`). Endpoint lampiran
+  izin memeriksa login + izin `izin.lihat` sendiri (petugas) atau kepemilikan pengajuan (siswa).
 - **Izin per role ditegakkan di `require_login()`** (`includes/auth.php`) untuk semua jalur
   (router maupun akses langsung ke `/panel/xxx.php`).
-- **Pembatas login:** 5 gagal per username atau 20 gagal per IP dalam 15 menit
-  mengunci login sementara (tabel `login_attempts`, dibuat otomatis).
+- **Pembatas login** (tabel `login_attempts` + `login_ip_dikenal`, dibuat otomatis; sama untuk portal siswa):
+  1. **Kunci 15 menit** setelah 5 gagal untuk satu username dari IP yang sama (berlaku untuk semua IP).
+  2. **Kunci 15 menit** setelah 20 gagal dari satu IP (semua username; portal siswa: 100). Untuk IP yang dalam 30 hari
+     terakhir pernah login berhasil ke username itu ("IP dikenal") batasnya lebih longgar tetapi tetap ada:
+     **300 gagal / 15 menit dari IP itu (semua akun)**. Siswa di balik NAT Wi-Fi sekolah tidak mudah mengunci petugas
+     yang biasa login dari jaringan itu, dan tebakan dari IP bersama tetap terbatas (mis. ±300 per 15 menit, bukan
+     5 per akun untuk ribuan akun).
+  3. Lebih dari 100 gagal untuk satu username dari IP mana pun **tidak mengunci**: IP yang tidak dikenal hanya boleh
+     satu pemeriksaan password untuk username itu tiap 1–60 detik (jeda naik bertahap tiap 20 kegagalan). Ini membatasi
+     tebakan terdistribusi (botnet, banyak alamat IPv6) sekitar 1.440 per hari, sementara pemilik akun dari IP dikenal
+     tidak terpengaruh.
+  - IPv6 dihitung per blok **/64**; alamat IPv4-mapped (`::ffff:1.2.3.4`) dibaca sebagai IPv4 biasa. Login berhasil
+    hanya menghapus riwayat gagal dari IP itu sendiri.
+  - **Aman dari permintaan paralel:** pemeriksaan batas dan pencatatan percobaan dilakukan di bawah kunci MySQL
+    `GET_LOCK` (per IP lalu per akun) **sebelum** password diperiksa; setiap percobaan dicatat dulu sebagai gagal
+    dan dihapus bila password benar. Jadi 40 permintaan serentak dari satu IP tetap hanya mendapat 5 pemeriksaan
+    password, dan saat jeda aktif hanya satu permintaan per jeda yang diperiksa.
+  - **Batas yang tersisa (jujur):** orang yang memakai IP yang sama dengan petugas (mis. satu NAT sekolah) tetap bisa
+    mengunci username itu dari IP tersebut selama 15 menit dengan 5 password salah (aturan 1), dan saat diserang
+    besar-besaran petugas yang login dari perangkat/jaringan **baru** bisa tidak kebagian giliran: penyerang yang
+    mengirim satu percobaan setiap jeda ikut memakai setiap giliran pemeriksaan (hingga 60 detik). Password yang
+    benar sengaja **tidak** diloloskan saat jeda, karena itu justru membuat jeda tidak berguna (setiap tebakan tetap
+    diperiksa). Pemulihan tercepat: login dari jaringan yang biasa dipakai (IP dikenal, tidak kena jeda), atau tunggu
+    sampai serangan berhenti / 15 menit.
+- **IP klien = `REMOTE_ADDR`.** Header `X-Forwarded-For` hanya dibaca bila permintaan datang dari proxy yang
+  terdaftar di `trusted_proxies` (`config/database.local.php`), sehingga pembatas login/portal tidak bisa diakali
+  dengan header palsu. Bila situs berada di belakang Cloudflare/reverse proxy, isi `trusted_proxies` dengan
+  IP/CIDR proxy tersebut; bila tidak, semua pengunjung akan terlihat ber-IP proxy.
 - **Header keamanan & cookie sesi** (`HttpOnly`, `SameSite=Lax`, `Secure` di HTTPS, strict mode,
   regenerasi ID sesi berkala) diatur di `includes/keamanan.php`. CSP belum dipasang karena
   aplikasi memakai script/style inline.
@@ -325,3 +529,37 @@ server tanpa internet. Untuk memperbarui, cukup ganti file di folder `vendor/`.
   Permintaan API / AJAX dijawab JSON (`{"success":false,"code":"DB_UNAVAILABLE",...}`), dan popup formulir
   hanya menampilkan pesan singkat. Logikanya ada di `tampilkan_error_database()` di `config/database.php`.
 - Ganti password `admin` bawaan dan password database sebelum dipakai produksi.
+
+---
+
+## 11. UPGRADE DARI VERSI SEBELUMNYA
+
+Lakukan berurutan, **sebelum** menimpa kode lama.
+
+> **Cek sebelum upload:** apakah `config/database.local.php` sudah ada di server? Bila belum, situs langsung
+> menampilkan 503 dengan kode kejadian berisi "config/database.local.php belum dibuat".
+
+1. **Pindahkan konfigurasi.** Catat nilai `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, dan `BASE_URL` dari
+   `config/database.php` yang lama, lalu buat `config/database.local.php` (salin dari `config/database.example.php`)
+   berisi nilai itu (`base_url` **wajib**; tanpa itu situs menampilkan 503 "isi base_url di config/database.local.php").
+   Setelah itu `config/database.php` boleh ditimpa versi baru. Tanpa file lokal, aplikasi memakai
+   bawaan `root`/tanpa password dan halaman akan menampilkan 503. Ganti password database yang pernah ikut ter-commit.
+2. **Jalankan migrasi database** (phpMyAdmin → pilih database → Import), berurutan. Semua file aman dijalankan
+   ulang (idempoten) dan sama persis dengan tabel yang dibuat otomatis oleh aplikasi:
+   - `database/migration_akun_siswa.sql` — tabel `siswa_akun`, `portal_attempts`, kolom `settings.portal_siswa_aktif`.
+   - `database/migration_izin.sql` — tabel `izin_pengajuan`, `izin_hari`, `portal_notifikasi`.
+   - `database/migration_keamanan.sql` — kolom wajib ganti password (dan kolom keamanan lain, lihat isi file).
+   Instalasi baru cukup import `database/database.sql` (sudah berisi semuanya); jangan import ulang file itu ke
+   database yang sudah berisi data.
+3. **Nginx**: bila server memakai Nginx, ganti aturan lama dengan blok di bagian 6 (A untuk kotak *URL rewrite* aaPanel,
+   B untuk vhost tulis sendiri), lalu reload Nginx.
+   Hapus `database/*.sql` dari server produksi setelah migrasi.
+4. **Password admin bawaan**: setiap akun yang masih memakai password bawaan akan dipaksa menggantinya saat login
+   berikutnya (menu lain terkunci sampai password diganti).
+5. **GPS & QR Kelas**: upgrade **tidak** mengubah pengaturan GPS maupun QR kelas yang sudah ada. Dashboard menampilkan
+   peringatan merah bila GPS nonaktif atau QR Kelas masih permanen; aktifkan GPS (dengan koordinat sekolah) dan matikan
+   "QR Kelas permanen" di Pengaturan bila layar kelas sudah siap.
+6. **Perangkat siswa**: tidak ada yang perlu dilakukan siswa. Saat HP membuka beranda atau presensi berhasil, perangkat
+   yang sudah terdaftar otomatis diikat ke cookie rahasia server (`SIAP_PERANGKAT`), lihat bagian 8. Pantau jumlah yang
+   belum termigrasi di Manajemen Perangkat, lalu (opsional) isi *Batas pengenalan perangkat lama* di Pengaturan.
+   Siswa yang menghapus cookie browser setelah perangkatnya *aktif* perlu direset perangkatnya oleh admin.

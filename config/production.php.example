@@ -1,0 +1,27 @@
+<?php
+/**
+ * OVERRIDE BASE_URL UNTUK SERVER PRODUKSI (VPS / aaPanel).
+ *
+ * CARA PAKAI:
+ *   1. Salin file ini menjadi  config/production.php
+ *        cp config/production.php.example config/production.php
+ *   2. Ganti nilainya dengan domain HTTPS sekolah Anda.
+ *   3. Upload config/production.php ke server (file .example boleh ikut, file .php tidak).
+ *
+ * File config/production.php sudah otomatis dimuat oleh config/database.php
+ * bila tersedia, dan nilainya MEANGGOverride BASE_URL yang biasanya
+ * dideteksi otomatis dari request. Pakai cara ini di produksi supaya URL
+ * (QR Code, tautan, redirect) tidak pernah bergantung pada header request.
+ *
+ * Alternatif: set environment variable SIAP_BASE_URL di panel hosting
+ * (aaPanel -> Website -> Setting -> PHP/Environment, atau di .htaccess
+ * dengan SetEnv). Kalau keduanya diisi, konstanta di file ini yang dipakai.
+ *
+ * CATATAN KEAMANAN: file ini hanya berisi alamat (bukan rahasia), tapi tetap
+ * tidak boleh di-commit ke git. Folder config/ juga sudah dilindungi .htaccess
+ * sehingga tidak bisa diakses langsung dari browser.
+ */
+
+// Domain produksi TANPA garis miring di akhir.
+// Contoh: 'https://siap.man2kotamadiun.sch.id'
+define('SIAP_BASE_URL', 'https://siap.man2kotamadiun.sch.id');

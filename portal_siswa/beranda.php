@@ -1,4 +1,5 @@
 <?php
+if (!defined('APP_ROUTER')) { http_response_code(404); exit; } // hanya lewat router (index.php -> portal_siswa/router.php)
 // /portal — beranda siswa: profil, kehadiran bulan ini, riwayat, perangkat
 require_once __DIR__ . '/../includes/device_binding.php';
 $akun = portal_wajib_login();
@@ -10,7 +11,7 @@ unset($_SESSION['portal_info']);
 
 // Rekap bulan berjalan
 $awalBulan = date('Y-m-01');
-$st = $db->prepare('SELECT status, COUNT(*) c FROM presensi WHERE siswa_id = :id AND tanggal >= :awal GROUP BY status');
+$st = $db->prepare('SELECT status, COUNT(*) c FROM presensi WHERE siswa_id = :id AND tanggal >= :awal AND tanggal <= CURDATE() GROUP BY status');
 $st->execute([':id' => $sid, ':awal' => $awalBulan]);
 $rekap = ['HADIR' => 0, 'TERLAMBAT' => 0, 'IZIN' => 0, 'SAKIT' => 0, 'ALPA' => 0];
 foreach ($st->fetchAll() as $r) if (isset($rekap[$r['status']])) $rekap[$r['status']] = (int) $r['c'];

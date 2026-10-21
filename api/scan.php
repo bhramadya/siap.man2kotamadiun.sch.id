@@ -80,7 +80,7 @@ if ($mode === 'preview') {
     } elseif (!$binding) {
         // Siswa ini belum pernah daftar device -> cek dulu apakah device ini
         // SUDAH dipakai siswa lain, sebelum menganggapnya "device baru".
-        $sudahDipakaiSiswaLain = get_device_binding_by_hash($deviceHash);
+        $sudahDipakaiSiswaLain = cari_binding_perangkat($deviceUuid) ?: get_device_binding_by_hash($deviceHash);
         if ($sudahDipakaiSiswaLain && (int) $sudahDipakaiSiswaLain['siswa_id'] !== $siswaId) {
             $deviceState = 'CLAIMED_BY_OTHER';
         } else {
@@ -89,7 +89,7 @@ if ($mode === 'preview') {
         }
     } elseif ($binding['status'] === 'BLOCKED') {
         $deviceState = 'BLOCKED';
-    } elseif (hash_equals($binding['device_hash'], $deviceHash)) {
+    } elseif (perangkat_cocok_dengan_binding($binding, $deviceUuid)) {
         $deviceState = 'MATCH';
     } else {
         $deviceState = 'MISMATCH';
