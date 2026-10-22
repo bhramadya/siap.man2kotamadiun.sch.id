@@ -13,10 +13,12 @@
     dan QR Code yang dicetak selalu benar.
 
     Perintah:
-        start    buka tunnel (default)
-        stop     tutup tunnel
-        status   tampilkan URL tunnel yang sedang aktif
-        restart  tutup lalu buka lagi
+        start           buka tunnel (default)
+        stop            tutup tunnel
+        status          tampilkan URL tunnel yang sedang aktif
+        status-url      cetak URL tunnel saja (dipakai ngrok.bat)
+        restart         tutup lalu buka lagi
+        ensure-server   pastikan Apache + MySQL lokal hidup (dipakai ngrok.bat)
 
 .PARAMETER Action
     start | stop | status | restart
@@ -24,8 +26,13 @@
 .PARAMETER Port
     Port Apache lokal yang ditunnelkan. Default 80.
 
+.PARAMETER Url
+    URL publik yang dipakai untuk tunnel. Default adalah reserved domain ngrok
+    milik sekolah, sehingga URL (dan QR Code yang dicetak) tidak berubah-ubah.
+    Kosong = biarkan ngrok yang memilih sendiri.
+
 .PARAMETER NgrokPath
-    Lokasi ngrok.exe. Kosong = cari otomatis.
+    Lokasi ngrok.exe. Kosong = cari otomatis (pilih versi terbaru).
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tools\ngrok-siap.ps1
@@ -40,19 +47,38 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('start', 'stop', 'status', 'restart')]
+    [ValidateSet('start', 'stop', 'status', 'status-url', 'restart', 'ensure-server')]
     [string] $Action = 'start',
 
     [int]    $Port = 80,
+
+    [string] $Url = 'https://magma-nautical-dividing.ngrok-free.dev',
 
     [string] $NgrokPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
+# Helper server lokal (Apache + MySQL) dipakai bersama dengan ngrok-watchdog.ps1.
+. (Join-Path $PSScriptRoot 'server-siap.ps1')
+
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+function Get-NgrokVersion {
+    <#
+      Versi ngrok dari executable tertentu, mis. '3.39.11'. Hasil null bila
+      tidak bisa dijalankan.
+    #>
+    param([string] $Exe)
+
+    try {
+        $teks = (& $Exe version 2>&1 | Out-String)
+        if ($teks -match '(\d+\.\d+\.\d+)') { return $Matches[1] }
+    } catch { }
+    return $null
+}
+
 function Resolve-NgrokPath {
     param([string] $Given)
 
@@ -61,18 +87,51 @@ function Resolve-NgrokPath {
         throw "ngrok.exe tidak ditemukan di: $Given"
     }
 
+    $kandidat = @()
     $cmd = Get-Command ngrok -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
+    if ($cmd) { $kandidat += $cmd.Source }
 
-    $kandidat = @(
-        'D:\laragon\bin\ngrok\ngrok.exe',
+    $kandidat += @(
         'D:\laragon\www\ngrok.exe',
+        'D:\laragon\bin\ngrok\ngrok.exe',
         "$env:ProgramFiles\ngrok\ngrok.exe"
     )
-    foreach ($k in $kandidat) {
-        if (Test-Path $k) { return $k }
+
+    # Pilih executable dengan versi TERBARU (--url butuh ngrok >= 3.30).
+    $terbaik = $null
+    $versiTerbaik = $null
+    foreach ($k in ($kandidat | Select-Object -Unique)) {
+        if (-not (Test-Path $k)) { continue }
+        $v = Get-NgrokVersion -Exe $k
+        if ($null -eq $v) { continue }
+        if ($null -eq $versiTerbaik -or [version]$v -gt [version]$versiTerbaik) {
+            $terbaik = (Resolve-Path $k).Path
+            $versiTerbaik = $v
+        }
     }
+    if ($terbaik) { return $terbaik }
+
+    foreach ($k in ($kandidat | Select-Object -Unique)) {
+        if (Test-Path $k) { return (Resolve-Path $k).Path }
+    }
+
     throw "ngrok.exe tidak ditemukan. Pasang ngrok v3 atau jalankan: ngrok config add-authtoken <token>"
+}
+
+function Get-NgrokUrlFlag {
+    <#
+      ngrok >= 3.30 memakai --url untuk menentukan endpoint; versi lama hanya
+      punya --domain (yang di versi baru dianggap deprecated). Deteksi
+      kemampuan executable yang dipakai agar script tetap jalan di keduanya.
+    #>
+    param([string] $Exe)
+
+    try {
+        $help = (& $Exe http --help 2>&1 | Out-String)
+        if ($help -match '--url\s+string') { return '--url' }
+        if ($help -match '--domain\s+string') { return '--domain' }
+    } catch { }
+    return '--url'
 }
 
 function Get-NgrokProcess {
@@ -178,11 +237,35 @@ switch ($Action) {
             Write-Host ""
             Write-Host "Tunnel AKTIF" -ForegroundColor Green
             Write-Host "  URL publik : $url"
+            if ($Url -ne '' -and $url -ne $Url) {
+                Write-Host "  (URL di-pin: $Url -- tunnel berjalan di URL lain)" -ForegroundColor Yellow
+            }
             Write-Host ""
         } else {
             Write-Host "Tunnel tidak aktif." -ForegroundColor Yellow
+            Write-Host "  Jalankan: powershell -ExecutionPolicy Bypass -File tools\ngrok-siap.ps1 start" -ForegroundColor DarkGray
         }
         break
+    }
+
+    'status-url' {
+        # Hanya URL yang dicetak (tanpa warna/teks lain) supaya mudah dibaca
+        # dari ngrok.bat lewat 'for /f'.
+        $url = Get-TunnelUrl
+        if ($url) { Write-Output $url }
+        break
+    }
+
+    'ensure-server' {
+        # Dipakai ngrok.bat: pastikan Apache + MySQL lokal hidup.
+        Write-Host "Menyiapkan server lokal..." -ForegroundColor Cyan
+        $siap = Ensure-SiapServer -WebPort $Port
+        if ($siap) {
+            Write-Host "Server lokal siap." -ForegroundColor Green
+            exit 0
+        }
+        Write-Host "Server lokal GAGAL disiapkan." -ForegroundColor Red
+        exit 1
     }
 
     'stop' {
@@ -224,8 +307,15 @@ switch ($Action) {
 
         Write-Host "Membuka tunnel ngrok -> http://localhost:$Port ..." -ForegroundColor Cyan
         $logFile = Join-Path $PSScriptRoot 'ngrok.log'
+
+        # Endpoint publik di-pin agar URL tidak berubah-ubah (penting untuk QR Code).
+        $argsTunnel = @('http', "$Port", '--log', 'stdout', '--log-level', 'info')
+        if ($Url -ne '') {
+            $argsTunnel += @((Get-NgrokUrlFlag -Exe $ngrok), $Url)
+        }
+
         Start-Process -FilePath $ngrok `
-            -ArgumentList @('http', "$Port", '--log', 'stdout', '--log-level', 'info') `
+            -ArgumentList $argsTunnel `
             -RedirectStandardOutput $logFile `
             -RedirectStandardError "$logFile.err" `
             -WindowStyle Hidden | Out-Null
@@ -263,6 +353,10 @@ switch ($Action) {
             Write-Host "  TUNNEL TERBUKA (aplikasi belum merespon, cek log)" -ForegroundColor Yellow
         }
         Write-Host "  URL publik  : $url$base" -ForegroundColor White
+        if ($Url -ne '' -and ($url -ne $Url)) {
+            Write-Host "  CATATAN: URL tunnel ($url) berbeda dari URL yang di-pin ($Url)." -ForegroundColor Yellow
+            Write-Host "            Cek log: $logFile" -ForegroundColor DarkGray
+        }
         Write-Host ""
         Write-Host "  Halaman yang bisa dibuka dari HP:" -ForegroundColor Cyan
         Write-Host "    Beranda        : $url$base/"

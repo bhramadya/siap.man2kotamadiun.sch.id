@@ -55,7 +55,10 @@ Presensi dari HP yang tidak terdaftar ditolak dan dicatat di Log Keamanan.
 ├── beranda.php, login.php, logout.php
 ├── config/database.php
 ├── config/production.php.example → contoh override BASE_URL untuk server produksi
+├── ngrok.bat              → klik 2x untuk membuka tunnel ngrok (bagian 4b)
 ├── tools/ngrok-siap.ps1         → buka/tutup tunnel ngrok untuk uji dari HP (bagian 4b)
+├── tools/ngrok-watchdog.ps1     → penjaga tunnel otomatis (opsional, bagian 4b)
+├── tools/server-siap.ps1        → helper start Apache + MySQL lokal (dipakai ngrok.bat & watchdog)
 ├── panel/               → halaman panel admin & operator
 ├── portal_siswa/        → halaman portal siswa (aktivasi, beranda, izin, notifikasi, password); hanya lewat router
 ├── presensi/            → halaman publik siswa (scan, konfirmasi, daftar_hp, berhasil)
@@ -109,8 +112,39 @@ hosting, jalankan aplikasi lokal lewat tunnel **ngrok** (URL publik HTTPS).
   ```
   ngrok config add-authtoken <TOKEN>
   ```
+  Authtoken tersimpan di `%LOCALAPPDATA%\ngrok\ngrok.yml` (sudah terisi di
+  mesin ini). Periksa dengan `ngrok config check`.
 
-### Menjalankan
+### Menjalankan — klik 2x `ngrok.bat`
+
+Cara paling cepat: **klik dua kali `ngrok.bat`** di folder aplikasi
+(`D:\laragon\www\siap\ngrok.bat`).
+
+```
+==============================================================
+  SIAP - Tunnel ngrok
+  URL publik : https://magma-nautical-dividing.ngrok-free.dev/siap/
+==============================================================
+
+[SIAP] Menyiapkan server lokal (Apache + MySQL)...
+[SIAP] Membuka tunnel ngrok ke http://localhost:80 ...
+```
+
+Yang terjadi:
+
+1. Apache + MySQL lokal otomatis dinyalakan bila belum hidup.
+2. Tunnel ngrok dibuka ke `http://localhost:80` dengan URL yang di-pin.
+3. Jendela cmd **tetap terbuka** sambil menampilkan dashboard ngrok — selama
+   jendela ini hidup, website bisa diakses orang lain dari luar jaringan.
+
+**Cara menghentikan:** tutup jendela cmd (atau tekan `Ctrl+C` di jendela itu).
+Tunnel langsung mati dan URL publik kembali `offline (ERR_NGROK_3200)`.
+
+Kalau diklik dua kali, jendela kedua akan mendeteksi tunnel yang sudah aktif
+lalu menampilkan URL-nya (tidak membuka agent kedua, yang akan gagal dengan
+`ERR_NGROK_334`).
+
+### Cara manual (PowerShell)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\ngrok-siap.ps1
@@ -119,20 +153,60 @@ powershell -ExecutionPolicy Bypass -File tools\ngrok-siap.ps1
 Script akan memastikan Apache listen di port 80, menjalankan
 `ngrok http 80`, menunggu tunnel siap, lalu menampilkan URL publik beserta
 tautan siap pakai (beranda, presensi, login, QR gerbang). Subfolder aplikasi
-pada URL publik (mis. `/siap`) ikut dideteksi otomatis.
+pada URL publik (mis. `/siap`) ikut dideteksi otomatis. Tunnel berjalan di
+background (tidak ada jendela yang harus dibiarkan terbuka).
+
+URL publik **di-pin** ke reserved domain ngrok milik sekolah:
+
+```
+https://magma-nautical-dividing.ngrok-free.dev/siap
+```
+
+Jadi alamatnya tidak berubah-ubah antar restart dan QR Code yang sudah dicetak
+tetap berlaku. Penempinannya dilakukan di parameter `-Url` (default) pada
+`tools/ngrok-siap.ps1`; script memakai flag `--url` (ngrok ≥ 3.30) dan otomatis
+beralih ke `--domain` bila memakai versi lama. Ingin mengganti domain:
+ubah parameter `-Url`, atau jalankan `ngrok http 80 --url https://domain-baru`.
 
 Perintah lain:
 
 ```powershell
-... -Action status    # URL tunnel yang sedang aktif
-... -Action stop      # tutup tunnel
-... -Action restart   # tutup lalu buka lagi
+... -Action status        # URL tunnel yang sedang aktif
+... -Action status-url    # cetak URL saja (dipakai ngrok.bat)
+... -Action stop          # tutup tunnel
+... -Action restart       # tutup lalu buka lagi
+... -Action ensure-server # pastikan Apache + MySQL lokal hidup
 ```
 
 Buka URL publik di HP. **Halaman pertama di tiap perangkat** akan menampilkan
 peringatan ngrok “Visit Site” — tekan tombolnya **sekali** (cookie berlaku 7 hari).
 Aplikasi Android/WebView dapat melewati peringatan ini dengan memakai
 *custom User-Agent* (mis. `SIAPApp/1.0`).
+
+### Mode otomatis (opsional)
+
+Tunnel normalnya **on-demand** (hanya hidup saat `ngrok.bat` dijalankan).
+Bila ingin tunnel tetap hidup tanpa perlu klik, pakai penjaga:
+
+`tools/ngrok-watchdog.ps1` — setiap 60 detik memastikan Apache + MySQL hidup
+dan tunnel ngrok masih terhubung; bila mati, service dinyalakan / tunnel
+dibuka kembali otomatis (berguna setelah komputer sleep atau ngrok crash).
+Log penjaga: `tools/ngrok-watchdog.log`.
+
+Untuk menjalankannya otomatis sejak login Windows, daftarkan sebagai
+Task Scheduler **“SIAP-Ngrok-Tunnel”** (tidak didaftarkan secara bawaan):
+
+```powershell
+$a = New-ScheduledTaskAction -Execute 'powershell.exe' `
+       -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "D:\laragon\www\siap\tools\ngrok-watchdog.ps1"'
+Register-ScheduledTask -TaskName 'SIAP-Ngrok-Tunnel' -Action $a `
+       -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME)
+```
+
+Lalu atur auto-start Laragon (`D:\laragon\usr\laragon.ini` → `RunAtStartup=-1`)
+agar Apache + MySQL ikut hidup setelah restart.
+
+> Task penjaga **tidak** menyalakan Laragon; MySQL/Apache tetap perlu hidup.
 
 > **URL tanpa `/siap`?** Tunnel memakai default vhost Laragon, jadi aplikasinya
 > berada di `/siap`. Agar berada di root domain, buat vhost Apache untuk domain
@@ -162,8 +236,10 @@ Aplikasi Android/WebView dapat melewati peringatan ini dengan memakai
   siswa/karyawan memakainya.
 - Free plan ngrok: **1 GB transfer + 20.000 request per bulan**, maksimal 3 endpoint
   aktif, dan **1 domain dev** (alamat domainnya tetap sama antar restart).
-- QR Code yang sudah dicetak memuat URL publik. Jika domain ngrok berubah
-  (mis. berganti akun), QR perlu dicetak ulang.
+- QR Code yang sudah dicetak memuat URL publik. Karena domain di-pin di
+  `tools/ngrok-siap.ps1` (parameter `-Url`), alamatnya tetap sama selama
+  authtoken & reserved domain tidak berubah; bila berganti akun/domain, QR
+  perlu dicetak ulang.
 - Untuk produksi tetap pakai domain sekolah + hosting (bagian 5), dan set
   `BASE_URL` secara eksplisit di server lewat `config/production.php`
   (contoh: `config/production.php.example`) atau environment variable
